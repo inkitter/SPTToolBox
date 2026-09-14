@@ -29,6 +29,8 @@ The plugin checks the running game's build number at load and refuses to load on
 
 Drop the built `BepInEx/plugins/sptmap/` folder into your SPT install's `BepInEx/plugins/` directory. See [Build & deploy](CLAUDE.md#build--deploy) for build instructions if you're building from source.
 
+Some display settings (minimap size/position, zoom speed, etc.) are exposed as in-game sliders, but only if [BepInEx.ConfigurationManager](https://github.com/BepInEx/BepInEx.ConfigurationManager) is also installed — it's what draws the `F12` settings menu. Without it, SPTMap still works, just with its hardcoded defaults.
+
 ## License
 
 The plugin code is licensed under the [MIT License](LICENSE). Map images under `Plugin/Resources/Maps/` are third-party assets under a separate license — see [`Plugin/Resources/Maps/LICENSE.md`](Plugin/Resources/Maps/LICENSE.md).
