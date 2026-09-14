@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Only pure logic files are compiled here (linked, not project-referenced) so `dotnet test`
+         doesn't pull in SPTMap.csproj's PostBuild step (which copies into a live game install and
+         requires the game closed) or its full IL2CPP/BepInEx reference set. -->
+    <TarkovDir Condition=" '$(TarkovDir)' == '' ">D:\Game\SPT5\</TarkovDir>
+    <TarkovInteropDir>$(TarkovDir)BepInEx\interop\</TarkovInteropDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Plugin\Utils\MathUtils.cs" Link="Source\MathUtils.cs" />
+    <Compile Include="..\Plugin\Utils\PlayerRules.cs" Link="Source\PlayerRules.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Private=true (copy-local): unlike the plugin, this is a standalone executable that needs
+         these DLLs next to it at test-run time, not just at compile time against the game's own. -->
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.CoreModule.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(TarkovInteropDir)Assembly-CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,266 @@
+using System.Collections.Generic;
+using System.Linq;
+using Comfort.Common;
+using EFT;
+using EFT.Interactive;
+using EFT.Quests;
+using Il2CppInterop.Runtime;
+using SPTMap.Data;
+using UnityEngine;
+
+namespace SPTMap.Utils
+{
+    // Ported from the old SPT-DynamicMaps project's QuestUtils (itself adapted from Prop's GTFO
+    // mod, https://github.com/dvize/GTFO, MIT licensed).
+    public static class QuestUtils
+    {
+        private const string Category = "Quest";
+        private const string ImagePath = "Markers/quest.png";
+        private static readonly Color MarkerColor = Color.green;
+
+        private static List<TriggerWithId> _triggersWithIds;
+        private static List<LootItem> _questItems;
+
+        internal static void TryCaptureQuestData()
+        {
+            var gameWorld = Singleton<GameWorld>.Instance;
+
+            _triggersWithIds ??= Object.FindObjectsOfType<TriggerWithId>().ToList();
+
+            if (_questItems == null)
+            {
+                _questItems = new List<LootItem>();
+                var lootItems = gameWorld.LootItems?._iteration;
+                if (lootItems != null)
+                {
+                    foreach (var item in lootItems)
+                    {
+                        if (item.Item.QuestItem)
+                        {
+                            _questItems.Add(item);
+                        }
+                    }
+                }
+            }
+        }
+
+        internal static void DiscardQuestData()
+        {
+            _triggersWithIds?.Clear();
+            _triggersWithIds = null;
+
+            _questItems?.Clear();
+            _questItems = null;
+        }
+
+        internal static IEnumerable<MapMarker> GetMarkersForPlayer(Player player)
+        {
+            if (_triggersWithIds == null || _questItems == null)
+            {
+                Plugin.Log.LogWarning($"QuestUtils: quest data not captured yet (triggers null: {_triggersWithIds == null}, items null: {_questItems == null})");
+                yield break;
+            }
+
+            foreach (var quest in GetIncompleteQuests(player))
+            {
+                foreach (var marker in GetMarkersForQuest(player, quest))
+                {
+                    yield return marker;
+                }
+            }
+        }
+
+        private static IEnumerable<MapMarker> GetMarkersForQuest(Player player, Quest quest)
+        {
+            var seenPositions = new List<Vector2>();
+
+            foreach (var condition in GetIncompleteQuestConditions(player, quest))
+            {
+                var questName = quest.Template.NameLocaleKey.BSGLocalized();
+
+                foreach (var worldPosition in GetPositionsForCondition(condition))
+                {
+                    var position = MathUtils.ConvertToMapPosition(worldPosition);
+
+                    if (seenPositions.Any(p => MathUtils.ApproxEquals(p.x, position.x) && MathUtils.ApproxEquals(p.y, position.y)))
+                    {
+                        continue;
+                    }
+
+                    seenPositions.Add(position);
+                    yield return new MapMarker
+                    {
+                        Category = Category,
+                        ImagePath = ImagePath,
+                        Text = questName,
+                        ShowLabel = true,
+                        Color = MarkerColor,
+                        GetPosition = () => position,
+                    };
+                }
+            }
+        }
+
+        // IL2CPP interop gotcha: elements pulled out of an Il2Cpp List<Condition> come back
+        // wrapped as the declared element type (Condition), not the actual runtime subtype, so a
+        // C# `switch`/`is` pattern match against ConditionZone/ConditionVisitPlace/etc. never
+        // matches. TryCast<T> against the underlying il2cpp object is required instead - see
+        // OtherPlayersMarkerProvider for the same pattern.
+        private static IEnumerable<Vector3> GetPositionsForCondition(Condition condition)
+        {
+            if (condition.TryCast<ConditionZone>() is { } zoneCondition)
+            {
+                foreach (var zoneId in zoneCondition.target)
+                {
+                    foreach (var position in GetPositionsForZoneId(zoneId))
+                    {
+                        yield return position;
+                    }
+                }
+            }
+            else if (condition.TryCast<ConditionLaunchFlare>() is { } flareCondition)
+            {
+                foreach (var position in GetPositionsForZoneId(flareCondition.zoneID))
+                {
+                    yield return position;
+                }
+            }
+            else if (condition.TryCast<ConditionVisitPlace>() is { } place)
+            {
+                foreach (var position in GetPositionsForZoneId(place.target))
+                {
+                    yield return position;
+                }
+            }
+            else if (condition.TryCast<ConditionInZone>() is { } zone)
+            {
+                foreach (var zoneId in zone.zoneIds)
+                {
+                    foreach (var position in GetPositionsForZoneId(zoneId))
+                    {
+                        yield return position;
+                    }
+                }
+            }
+            else if (condition.TryCast<ConditionFindItem>() is { } findItemCondition)
+            {
+                foreach (var position in GetPositionsForQuestItems(findItemCondition.target))
+                {
+                    yield return position;
+                }
+            }
+            else if (condition.TryCast<ConditionExitName>() is { } exitCondition)
+            {
+                var exfils = Singleton<GameWorld>.Instance.ExfiltrationController.ExfiltrationPoints;
+                var specifiedExit = exfils.FirstOrDefault(e => e.Settings.Name == exitCondition.exitName);
+                if (specifiedExit != null)
+                {
+                    yield return specifiedExit.transform.position;
+                }
+            }
+            else if (condition.TryCast<ConditionCounterCreator>() is { } conditionCreator)
+            {
+                foreach (var position in GetPositionsForConditionCreator(conditionCreator))
+                {
+                    yield return position;
+                }
+            }
+        }
+
+        private static IEnumerable<Vector3> GetPositionsForConditionCreator(ConditionCounterCreator conditionCreator)
+        {
+            foreach (var condition in conditionCreator._templateConditions.Conditions.List)
+            {
+                foreach (var position in GetPositionsForCondition(condition))
+                {
+                    yield return position;
+                }
+            }
+        }
+
+        private static IEnumerable<Vector3> GetPositionsForZoneId(string zoneId)
+        {
+            var zones = _triggersWithIds?.Where(t => t.Id == zoneId) ?? Enumerable.Empty<TriggerWithId>();
+            var any = false;
+            foreach (var zone in zones)
+            {
+                any = true;
+                yield return zone.transform.position;
+            }
+
+            if (!any)
+            {
+                var knownIds = _triggersWithIds == null ? "(null)" : string.Join(", ", _triggersWithIds.Select(t => t.Id));
+                Plugin.Log.LogWarning($"QuestUtils: no TriggerWithId found for zoneId '{zoneId}'. Known ids ({_triggersWithIds?.Count}): {knownIds}");
+            }
+        }
+
+        private static IEnumerable<Vector3> GetPositionsForQuestItems(IEnumerable<string> questItemIds)
+        {
+            foreach (var questItemId in questItemIds)
+            {
+                var items = _questItems?.Where(i => i.TemplateId == questItemId) ?? Enumerable.Empty<LootItem>();
+                foreach (var item in items)
+                {
+                    yield return item.transform.position;
+                }
+            }
+        }
+
+        private static IEnumerable<Condition> GetIncompleteQuestConditions(Player player, Quest quest)
+        {
+            if (quest?.Template?.Conditions == null)
+            {
+                yield break;
+            }
+
+            if (!quest.Template.Conditions.TryGetValue(EQuestStatus.AvailableForFinish, out var conditions) || conditions == null)
+            {
+                yield break;
+            }
+
+            foreach (var condition in conditions.List)
+            {
+                if (condition == null || IsConditionCompleted(player, quest, condition))
+                {
+                    continue;
+                }
+
+                yield return condition;
+            }
+        }
+
+        private static IEnumerable<Quest> GetIncompleteQuests(Player player)
+        {
+            var questsList = player.QuestController?.Quests?.List;
+            if (questsList == null)
+            {
+                yield break;
+            }
+
+            foreach (var quest in questsList)
+            {
+                if (quest?.Template?.Conditions == null || quest.QuestStatus != EQuestStatus.Started)
+                {
+                    continue;
+                }
+
+                yield return quest;
+            }
+        }
+
+        private static bool IsConditionCompleted(Player player, Quest questData, Condition condition)
+        {
+            // CompletedConditions is inaccurate (doesn't reset when some quests do on death, and
+            // doesn't contain optional objectives) - it's just a cheap first-pass filter, followed
+            // by the authoritative IsConditionDone check below.
+            if (condition.IsNecessary && !questData.CompletedConditions.Contains(condition))
+            {
+                return false;
+            }
+
+            var quest = player.QuestController?.Quests?.GetConditional(questData.Id);
+            return quest != null && quest.IsConditionDone(condition);
+        }
+    }
+}

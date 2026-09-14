@@ -1,0 +1,18 @@
+{
+  "DisplayName": "Labyrinth",
+  "MapInternalNames": [
+    "Labyrinth"
+  ],
+  "ImagePath": "Maps/Labyrinth/Labyrinth.png",
+  "Bounds": {
+    "Min": {
+      "x": -75.3,
+      "y": -52.5
+    },
+    "Max": {
+      "x": 36.5,
+      "y": 50.7
+    }
+  },
+  "CoordinateRotation": 90
+}

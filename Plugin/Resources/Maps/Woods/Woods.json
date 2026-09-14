@@ -1,0 +1,39 @@
+{
+  "DisplayName": "Woods",
+  "MapInternalNames": [
+    "woods"
+  ],
+  "ImagePath": "Maps/Woods/Woods_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -646,
+      "y": -442
+    },
+    "Max": {
+      "x": 761,
+      "y": 914
+    }
+  },
+  "CoordinateRotation": 180,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": 0,
+      "ImagePath": "Maps/Woods/Woods_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -761,
+            "y": -100000.0,
+            "z": -914
+          },
+          "Max": {
+            "x": 646,
+            "y": 100000.0,
+            "z": 442
+          }
+        }
+      ]
+    }
+  ]
+}

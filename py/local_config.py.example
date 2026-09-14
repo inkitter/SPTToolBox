@@ -1,0 +1,10 @@
+"""
+Optional. Copy this file to local_config.py (gitignored) and fill in the paths for your
+machine to override the scripts' built-in default. If local_config.py doesn't exist, the
+scripts fall back to their own hardcoded default path.
+"""
+
+# Path to a checkout of the old SPT-DynamicMaps project (https://github.com/mpstark/SPT-DynamicMaps
+# or your fork). Only needed by build_maps.py and update_labs.py, for Labs/Labyrinth's vendored
+# SVG source art - the other 9 maps are fetched live from tarkov.dev and don't need this.
+DYNAMICMAPS_REPO = r"C:\Path\To\SPT-DynamicMaps"

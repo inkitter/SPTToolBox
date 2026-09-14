@@ -1,0 +1,75 @@
+{
+  "DisplayName": "The Lab",
+  "MapInternalNames": [
+    "laboratory"
+  ],
+  "ImagePath": "Maps/Labs/Labs_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -441,
+      "y": 96
+    },
+    "Max": {
+      "x": -223,
+      "y": 292
+    }
+  },
+  "CoordinateRotation": 270,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": -1,
+      "ImagePath": "Maps/Labs/Labs_L-1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -292,
+            "y": -100,
+            "z": -441
+          },
+          "Max": {
+            "x": -96,
+            "y": -0.9,
+            "z": -223
+          }
+        }
+      ]
+    },
+    {
+      "Level": 0,
+      "ImagePath": "Maps/Labs/Labs_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -292,
+            "y": -0.9,
+            "z": -441
+          },
+          "Max": {
+            "x": -96,
+            "y": 3,
+            "z": -223
+          }
+        }
+      ]
+    },
+    {
+      "Level": 1,
+      "ImagePath": "Maps/Labs/Labs_L1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -271,
+            "y": 3,
+            "z": -422
+          },
+          "Max": {
+            "x": -101,
+            "y": 100,
+            "z": -270
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "DisplayName": "Factory",
+  "MapInternalNames": [
+    "factory4_day",
+    "factory4_night"
+  ],
+  "ImagePath": "Maps/Factory/Factory_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -67.4,
+      "y": -65.5
+    },
+    "Max": {
+      "x": 64.5,
+      "y": 77
+    }
+  },
+  "CoordinateRotation": 90,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": -1,
+      "ImagePath": "Maps/Factory/Factory_L-1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -65.5,
+            "y": -10000,
+            "z": -64.5
+          },
+          "Max": {
+            "x": 77,
+            "y": -1,
+            "z": 67.4
+          }
+        }
+      ]
+    },
+    {
+      "Level": 0,
+      "ImagePath": "Maps/Factory/Factory_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -65.5,
+            "y": -100000.0,
+            "z": -64.5
+          },
+          "Max": {
+            "x": 77,
+            "y": 100000.0,
+            "z": 67.4
+          }
+        }
+      ]
+    },
+    {
+      "Level": 1,
+      "ImagePath": "Maps/Factory/Factory_L1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -65.5,
+            "y": 3,
+            "z": -64.5
+          },
+          "Max": {
+            "x": 77,
+            "y": 6,
+            "z": 67.4
+          }
+        }
+      ]
+    },
+    {
+      "Level": 2,
+      "ImagePath": "Maps/Factory/Factory_L2.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -65.5,
+            "y": 6,
+            "z": -64.5
+          },
+          "Max": {
+            "x": 77,
+            "y": 10000,
+            "z": 67.4
+          }
+        }
+      ]
+    }
+  ]
+}

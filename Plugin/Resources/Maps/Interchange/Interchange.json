@@ -1,0 +1,75 @@
+{
+  "DisplayName": "Interchange",
+  "MapInternalNames": [
+    "Interchange"
+  ],
+  "ImagePath": "Maps/Interchange/Interchange_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -598,
+      "y": -426
+    },
+    "Max": {
+      "x": 433,
+      "y": 442
+    }
+  },
+  "CoordinateRotation": 180,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": 0,
+      "ImagePath": "Maps/Interchange/Interchange_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -433,
+            "y": -100000.0,
+            "z": -442
+          },
+          "Max": {
+            "x": 598,
+            "y": 100000.0,
+            "z": 426
+          }
+        }
+      ]
+    },
+    {
+      "Level": 1,
+      "ImagePath": "Maps/Interchange/Interchange_L1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -222,
+            "y": 25,
+            "z": -327
+          },
+          "Max": {
+            "x": 120,
+            "y": 34,
+            "z": 218
+          }
+        }
+      ]
+    },
+    {
+      "Level": 2,
+      "ImagePath": "Maps/Interchange/Interchange_L2.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -222,
+            "y": 34,
+            "z": -327
+          },
+          "Max": {
+            "x": 120,
+            "y": 1000,
+            "z": 218
+          }
+        }
+      ]
+    }
+  ]
+}

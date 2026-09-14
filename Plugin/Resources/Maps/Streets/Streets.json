@@ -1,0 +1,129 @@
+{
+  "DisplayName": "Streets of Tarkov",
+  "MapInternalNames": [
+    "tarkovstreets"
+  ],
+  "ImagePath": "Maps/Streets/Streets_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -323,
+      "y": -532
+    },
+    "Max": {
+      "x": 280,
+      "y": 295
+    }
+  },
+  "CoordinateRotation": 180,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": -1,
+      "ImagePath": "Maps/Streets/Streets_L-1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -280,
+            "y": -10000,
+            "z": -295
+          },
+          "Max": {
+            "x": 323,
+            "y": -6,
+            "z": 532
+          }
+        }
+      ]
+    },
+    {
+      "Level": 0,
+      "ImagePath": "Maps/Streets/Streets_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -280,
+            "y": -100000.0,
+            "z": -295
+          },
+          "Max": {
+            "x": 323,
+            "y": 100000.0,
+            "z": 532
+          }
+        }
+      ]
+    },
+    {
+      "Level": 1,
+      "ImagePath": "Maps/Streets/Streets_L1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -280,
+            "y": 10,
+            "z": -295
+          },
+          "Max": {
+            "x": 323,
+            "y": 15,
+            "z": 532
+          }
+        }
+      ]
+    },
+    {
+      "Level": 2,
+      "ImagePath": "Maps/Streets/Streets_L2.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -280,
+            "y": 15,
+            "z": -295
+          },
+          "Max": {
+            "x": 323,
+            "y": 20,
+            "z": 532
+          }
+        }
+      ]
+    },
+    {
+      "Level": 3,
+      "ImagePath": "Maps/Streets/Streets_L3.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -280,
+            "y": 20,
+            "z": -295
+          },
+          "Max": {
+            "x": 323,
+            "y": 25,
+            "z": 532
+          }
+        }
+      ]
+    },
+    {
+      "Level": 4,
+      "ImagePath": "Maps/Streets/Streets_L4.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -280,
+            "y": 25,
+            "z": -295
+          },
+          "Max": {
+            "x": 323,
+            "y": 10000,
+            "z": 532
+          }
+        }
+      ]
+    }
+  ]
+}

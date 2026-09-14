@@ -1,0 +1,5 @@
+bin/
+obj/
+*.user
+release/
+local_config.py

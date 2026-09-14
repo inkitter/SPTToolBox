@@ -1,0 +1,118 @@
+{
+  "DisplayName": "Ground Zero",
+  "MapInternalNames": [
+    "sandbox",
+    "sandbox_high"
+  ],
+  "ImagePath": "Maps/GroundZero/GroundZero_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -249,
+      "y": -364
+    },
+    "Max": {
+      "x": 99,
+      "y": 124
+    }
+  },
+  "CoordinateRotation": 180,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": -1,
+      "ImagePath": "Maps/GroundZero/GroundZero_L-1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": 43,
+            "y": -1000,
+            "z": -100
+          },
+          "Max": {
+            "x": 117,
+            "y": 21,
+            "z": 190
+          }
+        },
+        {
+          "Min": {
+            "x": 117,
+            "y": -1000,
+            "z": 49
+          },
+          "Max": {
+            "x": 143,
+            "y": 21,
+            "z": 80
+          }
+        }
+      ]
+    },
+    {
+      "Level": 0,
+      "ImagePath": "Maps/GroundZero/GroundZero_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -99,
+            "y": -100000.0,
+            "z": -124
+          },
+          "Max": {
+            "x": 249,
+            "y": 100000.0,
+            "z": 364
+          }
+        }
+      ]
+    },
+    {
+      "Level": 1,
+      "ImagePath": "Maps/GroundZero/GroundZero_L1.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -99,
+            "y": 28,
+            "z": -124
+          },
+          "Max": {
+            "x": 249,
+            "y": 32.3,
+            "z": 364
+          }
+        },
+        {
+          "Min": {
+            "x": 91,
+            "y": 26,
+            "z": 216
+          },
+          "Max": {
+            "x": 98,
+            "y": 31,
+            "z": 228
+          }
+        }
+      ]
+    },
+    {
+      "Level": 2,
+      "ImagePath": "Maps/GroundZero/GroundZero_L2.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -99,
+            "y": 32.3,
+            "z": -124
+          },
+          "Max": {
+            "x": 249,
+            "y": 1000,
+            "z": 364
+          }
+        }
+      ]
+    }
+  ]
+}

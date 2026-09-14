@@ -1,0 +1,115 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>SPTMap</AssemblyName>
+    <Description>Lightweight IMGUI-based in-game map for SPT</Description>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- TarkovDir: override per-machine in SPTMap.csproj.user (gitignored, MSBuild auto-imports it)
+       or via -p:TarkovDir=... ; falls back to this default otherwise. -->
+  <PropertyGroup>
+    <TarkovDir Condition=" '$(TarkovDir)' == '' ">D:\Game\SPT5\</TarkovDir>
+    <TarkovInteropDir>$(TarkovDir)BepInEx\interop\</TarkovInteropDir>
+    <TarkovBepInExCoreDir>$(TarkovDir)BepInEx\core\</TarkovBepInExCoreDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- game/interop assemblies needed for game-state hooks (player position, raid state, etc) -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(TarkovInteropDir)Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Comfort">
+      <HintPath>$(TarkovInteropDir)Comfort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Comfort.Unity">
+      <HintPath>$(TarkovInteropDir)Comfort.Unity.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(TarkovInteropDir)UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- legacy IMGUI - only depends on UnityEngine core modules, not on any BSG UI assembly,
+         which is exactly why it doesn't break across game UI/version changes. -->
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PlayerEnums">
+      <HintPath>$(TarkovInteropDir)PlayerEnums.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(TarkovBepInExCoreDir)0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Core">
+      <HintPath>$(TarkovBepInExCoreDir)BepInEx.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP">
+      <HintPath>$(TarkovBepInExCoreDir)BepInEx.Unity.IL2CPP.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(TarkovBepInExCoreDir)Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(TarkovInteropDir)Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppSystem">
+      <HintPath>$(TarkovInteropDir)Il2CppSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppSystem.Core">
+      <HintPath>$(TarkovInteropDir)Il2CppSystem.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="CoreServices">
+      <HintPath>$(TarkovInteropDir)CoreServices.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Diz.Binding">
+      <HintPath>$(TarkovInteropDir)Diz.Binding.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <ItemGroup>
+      <OutputDLL Include="$(ProjectDir)$(OutDir)$(TargetName).dll" />
+      <NewtonsoftJsonDLL Include="$(NuGetPackageRoot)newtonsoft.json\13.0.3\lib\net6.0\Newtonsoft.Json.dll" />
+      <Resources Include="$(ProjectDir)Resources\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(OutputDLL);@(NewtonsoftJsonDLL)" DestinationFolder="$(TarkovDir)BepInEx\plugins\sptmap\%(RecursiveDir)" />
+    <Copy SourceFiles="@(Resources)" DestinationFolder="$(TarkovDir)BepInEx\plugins\sptmap\%(RecursiveDir)" />
+  </Target>
+</Project>

@@ -1,0 +1,39 @@
+{
+  "DisplayName": "Lighthouse",
+  "MapInternalNames": [
+    "lighthouse"
+  ],
+  "ImagePath": "Maps/Lighthouse/Lighthouse_L0.png",
+  "Bounds": {
+    "Min": {
+      "x": -515,
+      "y": -725
+    },
+    "Max": {
+      "x": 545,
+      "y": 998
+    }
+  },
+  "CoordinateRotation": 180,
+  "DefaultLevel": 0,
+  "Levels": [
+    {
+      "Level": 0,
+      "ImagePath": "Maps/Lighthouse/Lighthouse_L0.png",
+      "GameBounds": [
+        {
+          "Min": {
+            "x": -545,
+            "y": -100000.0,
+            "z": -998
+          },
+          "Max": {
+            "x": 515,
+            "y": 100000.0,
+            "z": 725
+          }
+        }
+      ]
+    }
+  ]
+}
