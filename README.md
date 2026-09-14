@@ -20,7 +20,7 @@ Map source data (SVGs, per-floor bounds) is fetched from [tarkov.dev](https://ta
 
 | | |
 |---|---|
-| SPT release | `SPT-BLEEDINGEDGEMODS-5.0.0` |
+| SPT release | `SPT-BLEEDINGEDGEMODS-5.0.0-47242-ec15a40-20260914` |
 | EFT build | `47242`+ ([`Plugin.BuiltForVersion`](Plugin/Plugin.cs)) |
 
 The plugin checks the running game's build number at load and refuses to load on anything older than `Plugin.BuiltForVersion` — see [Plugin lifecycle](CLAUDE.md#plugin-lifecycle). This table will be updated as the plugin is retested against newer SPT releases.
