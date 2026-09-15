@@ -36,6 +36,34 @@ SPTMap is a BepInEx IL2CPP plugin for SPT (Single Player Tarkov) that renders an
 
 PostBuild auto-copies `SPTMap.dll`, `Newtonsoft.Json.dll`, and `Resources\` to `$(TarkovDir)BepInEx\plugins\sptmap\`. **Close the game before rebuilding** — the copy fails if `EscapeFromTarkov.exe` is running.
 
+## Release (GitHub)
+
+Releases are published from https://github.com/inkitter/SPTMap via `gh`. **Before publishing, ask the user whether to bump the version number** (tag/csproj `<AssemblyName>`-adjacent version, release title, zip filename) rather than assuming a same-version republish.
+
+`gh` is installed via winget but isn't on this session's PATH by default — call it by full path: `& "C:\Program Files\GitHub CLI\gh.exe" ...` (PowerShell) or add it to PATH for bash. Confirm auth first: `gh auth status`.
+
+To build and publish (or republish) a release zip for version `vX.Y.Z`:
+
+1. Close the game, `dotnet build` from `Plugin\` (PostBuild deploys to `$(TarkovDir)BepInEx\plugins\sptmap\` - see above).
+2. Zip that deployed folder under a `BepInEx/plugins/sptmap/...` path prefix (so it extracts by merging straight into an SPT install root) - stage it into a scratch dir first, e.g.:
+   ```powershell
+   mkdir <stage>\BepInEx\plugins\sptmap
+   cp -r "$TarkovDir\BepInEx\plugins\sptmap\." <stage>\BepInEx\plugins\sptmap\
+   # zip <stage> contents (with the BepInEx\... prefix preserved) to SPTMap-vX.Y.Z.zip
+   ```
+3. If replacing an existing tag (same-version republish), move it to the current commit rather than leaving it stale:
+   ```
+   git tag -d vX.Y.Z
+   git tag vX.Y.Z -m "vX.Y.Z - built for <compat table entry>"
+   git push origin :refs/tags/vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+4. Delete the old release (if any) and create the new one with the zip attached:
+   ```
+   gh release delete vX.Y.Z --repo inkitter/SPTMap --yes --cleanup-tag=false
+   gh release create vX.Y.Z --repo inkitter/SPTMap --title "SPTMap vX.Y.Z" --notes "..." SPTMap-vX.Y.Z.zip
+   ```
+
 ## Asset build scripts (`py\`)
 
 Both scripts require `cairosvg` and `pillow`. Install via `uv add <pkg>` in `D:\Git\uv` (the project's Python env), not bare `pip install`.
