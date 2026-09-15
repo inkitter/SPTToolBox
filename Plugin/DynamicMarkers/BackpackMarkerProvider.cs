@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
@@ -108,16 +107,31 @@ namespace SPTMap.DynamicMarkers
             }
         }
 
+        // Player is a MonoBehaviour (UnityEngine.Object) - explicit ifs instead of a ?. chain, per
+        // the "?./?? bypasses Unity's fake-null override" rule (see git history/memory). Inventory/
+        // Equipment/Slot/Item are plain Il2CppSystem.Object, not UnityEngine.Object, so ?. on those
+        // hops is fine.
         private static string GetEquippedBackpackItemId()
         {
             var player = GameUtils.GetMainPlayer();
-            var equipment = player?.Inventory?.Equipment;
+            if (player == null)
+            {
+                return null;
+            }
+
+            var equipment = player.Inventory?.Equipment;
             return equipment?.GetSlot(EquipmentSlot.Backpack)?.ContainedItem?.Id;
         }
 
         private static bool IsStillInWorld(LootItem loot)
         {
-            var lootList = Singleton<GameWorld>.Instance?.LootList;
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld == null)
+            {
+                return false;
+            }
+
+            var lootList = gameWorld.LootList;
             if (lootList == null)
             {
                 return false;
@@ -136,7 +150,13 @@ namespace SPTMap.DynamicMarkers
 
         private static LootItem FindLootById(string itemId)
         {
-            var lootList = Singleton<GameWorld>.Instance?.LootList;
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld == null)
+            {
+                return null;
+            }
+
+            var lootList = gameWorld.LootList;
             if (lootList == null)
             {
                 return null;
@@ -145,7 +165,13 @@ namespace SPTMap.DynamicMarkers
             foreach (var killable in lootList)
             {
                 var loot = killable.TryCast<LootItem>();
-                if (loot?.Item?.Id == itemId)
+                if (loot == null)
+                {
+                    continue;
+                }
+
+                var item = loot.Item;
+                if (item != null && item.Id == itemId)
                 {
                     return loot;
                 }

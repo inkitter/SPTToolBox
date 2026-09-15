@@ -194,6 +194,7 @@ namespace SPTMap
                 TryRetryTransitMarkers();
                 TryRetrySecretMarkers();
                 TryRetryHiddenStashMarkers();
+                TryTickExtractMarkers();
                 TryTickQuestMarkers();
                 TryTickOtherPlayers();
                 TryTickBtrMarker();
@@ -456,6 +457,18 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"Extract marker retry exception: {e}");
+            }
+        }
+
+        private void TryTickExtractMarkers()
+        {
+            try
+            {
+                _extractMarkerProvider?.Tick(Time.deltaTime);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Extract marker refresh exception: {e}");
             }
         }
 

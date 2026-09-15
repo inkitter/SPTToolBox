@@ -56,8 +56,16 @@ namespace SPTMap.Utils
         // fighting the button's own interactable state.
         public static void ClickObtainPrestige()
         {
+            // InventoryScreen is a UnityEngine.Object (UIElement/MonoBehaviour) - explicit if
+            // instead of ?., see git history/memory ("?./?? bypasses Unity's fake-null override").
             var inventoryScreen = UnityEngine.Object.FindObjectOfType<InventoryScreen>();
-            var prestigeScreen = inventoryScreen?._prestigeScreen;
+            if (inventoryScreen == null)
+            {
+                Plugin.Log.LogWarning("PrestigeDebugPatches: no InventoryScreen found - open it via Show Prestige Screen first.");
+                return;
+            }
+
+            var prestigeScreen = inventoryScreen._prestigeScreen;
             if (prestigeScreen == null)
             {
                 Plugin.Log.LogWarning("PrestigeDebugPatches: no PrestigeScreen found - open it via Show Prestige Screen first.");
@@ -104,7 +112,15 @@ namespace SPTMap.Utils
             }
         }
 
-        private static GameModeDescriptor Descriptor(IEftSession session) =>
-            session?.TryCast<ClientBackendSession>()?._GameModeDescriptor_k__BackingField;
+        private static GameModeDescriptor Descriptor(IEftSession session)
+        {
+            if (session == null)
+            {
+                return null;
+            }
+
+            var backendSession = session.TryCast<ClientBackendSession>();
+            return backendSession == null ? null : backendSession._GameModeDescriptor_k__BackingField;
+        }
     }
 }

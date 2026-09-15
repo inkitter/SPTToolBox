@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
@@ -59,14 +58,42 @@ namespace SPTMap.DynamicMarkers
 
         private void Rescan()
         {
-            var wishlist = GameUtils.GetMainPlayer()?.Profile?.WishlistManager?.GetWishlist();
-            var lootList = Singleton<GameWorld>.Instance?.LootList;
+            // Player/GameWorld are UnityEngine.Object-derived (MonoBehaviours) - Unity overrides
+            // their ==/!= to catch a destroyed-but-not-yet-GC'd native object, but ?./?? bypass
+            // that override and see raw CLR non-null, so this is explicit ifs all the way down
+            // instead of a ?. chain.
+            var player = GameUtils.GetMainPlayer();
+            if (player == null)
+            {
+                return;
+            }
+
+            var profile = player.Profile;
+            var wishlistManager = profile?.WishlistManager;
+            if (wishlistManager == null)
+            {
+                return;
+            }
+
+            var wishlist = wishlistManager.GetWishlist();
+
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld == null)
+            {
+                return;
+            }
+
+            var lootList = gameWorld.LootList;
             if (wishlist == null || lootList == null)
             {
                 return;
             }
 
-            var wishlistIds = wishlist.Keys.ToSystemList().Select(id => (string)id).ToHashSet();
+            var wishlistIds = new HashSet<string>();
+            foreach (var id in wishlist.Keys.ToSystemList())
+            {
+                wishlistIds.Add(id);
+            }
 
             var found = new HashSet<LootItem>();
             foreach (var killable in lootList)
@@ -78,10 +105,19 @@ namespace SPTMap.DynamicMarkers
                 }
             }
 
-            foreach (var stale in _markers.Keys.Where(k => !found.Contains(k)).ToList())
+            var stale = new List<LootItem>();
+            foreach (var tracked in _markers.Keys)
             {
-                MarkerManager.Remove(_markers[stale]);
-                _markers.Remove(stale);
+                if (!found.Contains(tracked))
+                {
+                    stale.Add(tracked);
+                }
+            }
+
+            foreach (var item in stale)
+            {
+                MarkerManager.Remove(_markers[item]);
+                _markers.Remove(item);
             }
 
             foreach (var loot in found)

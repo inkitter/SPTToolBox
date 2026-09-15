@@ -36,7 +36,7 @@ namespace SPTMap.DynamicMarkers
             }
 
             var points = Object.FindObjectsOfType<TransitPoint>();
-            if (points == null || points.Length == 0)
+            if (points == null)
             {
                 return;
             }
@@ -46,6 +46,11 @@ namespace SPTMap.DynamicMarkers
                 AddMarker(point);
             }
 
+            // stop retrying regardless of count - TransitPoint is static level geometry, not a
+            // raid-random spawn, so an empty result here means this map genuinely has none, not
+            // "not loaded yet". Gating on points.Length would re-run this full-scene
+            // FindObjectsOfType scan every single frame for the rest of the raid on those maps
+            // (see git history: same bug tanked FPS via HiddenStashMarkerProvider).
             _populated = true;
         }
 
