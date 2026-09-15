@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Comfort.Common;
 using EFT;
+using EFT.Vehicle;
 
 namespace SPTMap.Utils
 {
@@ -51,6 +52,12 @@ namespace SPTMap.Utils
         {
             var gameWorld = Singleton<GameWorld>.Instance;
             return gameWorld?.MainPlayer;
+        }
+
+        public static BTRView GetBTRView()
+        {
+            var gameWorld = Singleton<GameWorld>.Instance;
+            return gameWorld?.BtrController?.BtrView;
         }
 
         public static bool IsScavRaid()

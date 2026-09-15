@@ -13,7 +13,7 @@ Map source data (SVGs, per-floor bounds) is fetched from [tarkov.dev](https://ta
 - In-raid minimap (always shown) and full-screen map (hold `M`)
 - Multi-floor support with automatic floor detection based on player position
 - Player position/facing marker, zoom, and pan-follow
-- Dynamic markers: extracts (with status), other players, corpses, quest objectives
+- Dynamic markers: extracts (with status), secret extracts, transit points, other players, corpses, quest objectives (including quest items), locked doors, BTR, airdrops
 - **`F9`** opens a quest debug panel with an instant-finish button per quest (calls the same engine entry point the native "Complete quest" button uses, so rewards/chain unlocks fire for real). Ships enabled by default — see `Plugin/Utils/QuestDebugPanel.cs`.
 
 ## Compatibility

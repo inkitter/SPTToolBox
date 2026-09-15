@@ -71,7 +71,9 @@ Each `MapDef` has a `Levels` list (empty = single-level, old behavior). Each lev
 
 ### Markers
 
-`MarkerManager.cs` holds a flat `List<MapMarker>`. Providers (`ExtractMarkerProvider`, `OtherPlayersMarkerProvider`, `CorpseMarkerProvider`, `QuestMarkerProvider`) add/remove entries. `SPTMapBehaviour.DrawMarkers` iterates every `OnGUI`, each draw wrapped in its own `try/catch` so one bad marker can't blank the map. Marker positions are raw pre-rotation world space — `DrawMarkers` applies `CoordinateRotation` the same way the player marker does.
+`MarkerManager.cs` holds a flat `List<MapMarker>`. Providers (`ExtractMarkerProvider`, `SecretMarkerProvider`, `TransitMarkerProvider`, `DoorMarkerProvider`, `OtherPlayersMarkerProvider` (also covers corpses), `QuestMarkerProvider`, `BTRMarkerProvider`, `AirdropMarkerProvider`) add/remove entries. `SPTMapController.DrawMarkers` iterates every `OnGUI`, each draw wrapped in its own `try/catch` so one bad marker can't blank the map. Marker positions are raw pre-rotation world space — `DrawMarkers` applies `CoordinateRotation` the same way the player marker does.
+
+All providers are patch-free by design: extracts/secrets/transit/doors resolve their source lists straight off engine controllers (`ExfiltrationController`, `TransitController`) or a scene scan (`Object.FindObjectsOfType<Door>()`) at `OnRaidStart`, retried each frame until populated; BTR and airdrops poll a live `Tick()` each frame/on a short timer instead (`GameUtils.GetBTRView()`, `Object.FindObjectsOfType<AirdropSynchronizableObject>()`) since those can appear/disappear mid-raid. `AirdropMarkerProvider`'s live rescan is a deliberate departure from the predecessor project, which relied on a Harmony patch on `ClientAirDrop.CloseParachute` (only fires once a crate has already landed) — the rescan approach should also surface a crate while it's still under its parachute, but this hasn't been confirmed in-game yet.
 
 Raid start/end is edge-detected in `SPTMapBehaviour.Update()` off `GameUtils.IsInRaid()` and drives all providers' `OnRaidStart`/`OnRaidEnd` + `MarkerManager.Clear()`.
 
@@ -92,12 +94,13 @@ Raid start/end is edge-detected in `SPTMapBehaviour.Update()` off `GameUtils.IsI
 | `Plugin/Utils/MathUtils.cs` | `Rotate90Multiple`, coordinate math |
 | `Plugin/Utils/QuestDebugPanel.cs` | F9 dev panel, instant quest completion |
 | `Plugin/Config/Settings.cs` | BepInEx `ConfigEntry` bindings |
-| `Plugin/DynamicMarkers/` | Four marker providers |
+| `Plugin/DynamicMarkers/` | Marker providers (extracts, secrets, transit, doors, players/corpses, quests, BTR, airdrops) |
 
 ## Current state (as of 2026-09-10)
 
 - All 11 maps working with multi-floor support (Labs/Labyrinth single-level, stale art/bounds — no tarkov.dev SVG available).
 - Markers ported from the predecessor project but **not yet verified in-game**. Things to check first: extract marker status colors update correctly; other players/corpses appear and clean up on death/raid-end without leaking; quest markers are positioned correctly and don't spam-log errors from `QuestUtils`'s reflection-based loot-item lookup (not exercised yet in this project).
+- Secret/transit/BTR markers (added 2026-09-14) are unverified in-game. Airdrop markers (also added 2026-09-14) use a live `FindObjectsOfType<AirdropSynchronizableObject>` rescan instead of the predecessor's landing-only Harmony patch, specifically so a crate shows up while still under its parachute — whether that object is actually present/positioned correctly pre-landing hasn't been confirmed yet.
 - Map calibration: 9 maps refreshed from tarkov.dev and confirmed current as of 2026-09-10 (`the-hideout/tarkov-dev`'s `maps.json` + live SVGs, same coordinate convention as `Bounds`/`CoordinateRotation`/`GameBounds`). Labs/Labyrinth have no `svgPath` on tarkov.dev (raster-tile-only) and stay on old vendored data. If a map still doesn't line up with in-game terrain after a tarkov.dev refresh, fall back to manual affine recalibration via `calibrate_bounds.py`; proportionally expanding `Bounds` is the last-resort option if neither source is available.
 - A few floors have no distinct art on tarkov.dev at all (tile-only, not SVG) and are skipped rather than guessed at: Customs' 4th floor and Reserve's above-ground floors except Bunkers. Those areas just show the Ground level image underneath — a readability gap, not a correctness one.
 - Some display constants (mini-map size, zoom speed) are exposed via `Settings.cs` `ConfigEntry`s (visible as sliders in BepInEx ConfigurationManager); box sizing and key bindings are still hardcoded in `Plugin.cs`.

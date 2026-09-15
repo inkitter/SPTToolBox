@@ -57,6 +57,12 @@
       <HintPath>$(TarkovInteropDir)UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Physics.Raycast - used to find exact ground height for the map-click teleport, instead of
+         guessing a height and letting gravity (and fall damage) sort it out. -->
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(TarkovInteropDir)UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="PlayerEnums">
       <HintPath>$(TarkovInteropDir)PlayerEnums.dll</HintPath>
       <Private>false</Private>
@@ -95,6 +101,12 @@
     </Reference>
     <Reference Include="Diz.Binding">
       <HintPath>$(TarkovInteropDir)Diz.Binding.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- AirdropSynchronizableObject's base type (SerializedMonoBehaviour) lives here - needed to
+         even reference the type, not because AirdropMarkerProvider calls anything on it. -->
+    <Reference Include="Sirenix.Serialization">
+      <HintPath>$(TarkovInteropDir)Sirenix.Serialization.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

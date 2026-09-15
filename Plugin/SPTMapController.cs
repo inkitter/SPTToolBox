@@ -27,6 +27,24 @@ namespace SPTMap
         // position gets logged so two such readings can be solved into an affine Bounds fix
         // without needing new art.
         private const KeyCode LandmarkKey = KeyCode.KeypadPeriod;
+
+        // teleport-to-mouse, only meaningful with the full map open (M held) since that's the
+        // only time the cursor is free and _lastMapImageRect reflects a precise, zoomed-in click
+        // target rather than the tiny corner minimap.
+        private const KeyCode TeleportKey = KeyCode.F8;
+
+        // how far above the clicked X/Z the ground-finding raycast starts when the active level
+        // has no GameBounds box for that spot (single-level maps, or a level whose box list means
+        // "everywhere") - has to clear the tallest roof/terrain on the map. When a box IS found,
+        // its own Max.y is used instead (see TryFindGroundHeight), which is what keeps multi-floor
+        // maps from raycasting down onto a lower floor's ceiling instead of the intended one.
+        private const float TeleportRaycastFallbackHeight = 50f;
+        private const float TeleportRaycastMaxDistance = 200f;
+
+        // landed exactly on the raycast hit point would have the player's feet origin sunk into
+        // the ground by however thick their collider's own margin is - this tiny lift avoids that
+        // without being enough to trigger fall damage on landing.
+        private const float TeleportStandOffset = 0.05f;
         private static int MinimapWidth => SPTMapConfig.MiniMapWidth.Value;
         private const float PeekScreenFraction = 0.8f;
 
@@ -69,6 +87,10 @@ namespace SPTMap
         private DoorMarkerProvider _doorMarkerProvider;
         private OtherPlayersMarkerProvider _otherPlayersMarkerProvider;
         private QuestMarkerProvider _questMarkerProvider;
+        private TransitMarkerProvider _transitMarkerProvider;
+        private SecretMarkerProvider _secretMarkerProvider;
+        private BTRMarkerProvider _btrMarkerProvider;
+        private AirdropMarkerProvider _airdropMarkerProvider;
         private bool _wasInRaid;
 
         private float _zoom = MinZoom;
@@ -85,18 +107,40 @@ namespace SPTMap
 
         private bool _peekToggled;
 
+        // last full-map draw's screen-space image rect + the world-space view window it covers -
+        // captured every DrawMap call so TryTeleportToMouse (Keypad-independent, F8) can invert
+        // "where on screen did they click" back into a world position without redoing the whole
+        // zoom/pan computation. One frame stale at worst (Update runs after the prior frame's
+        // OnGUI) - imperceptible for a manual teleport click.
+        private Rect? _lastMapImageRect;
+        private Vector2 _lastMapViewMin;
+        private Vector2 _lastMapViewMax;
+        private MapDef _lastMapDef;
+
         public void Update()
+        {
+            try
+            {
+                UpdateInternal();
+            }
+            catch (Exception e)
+            {
+                // unlike the marker-provider calls below (each already wrapped individually so one
+                // bad provider can't block the rest), this is the outermost catch-all - without it
+                // an exception anywhere in Update (e.g. the F8 teleport handler) would silently
+                // stop that whole frame's input handling with nothing visible in-game, only in the
+                // log.
+                Plugin.Log.LogError($"SPTMapController.Update exception: {e}");
+            }
+        }
+
+        private void UpdateInternal()
         {
             if (Input.GetKeyDown(PeekKey))
             {
                 _peekToggled = !_peekToggled;
 
-                if (_peekToggled)
-                {
-                    Cursor.lockState = CursorLockMode.None;
-                    Cursor.visible = true;
-                }
-                else
+                if (!_peekToggled)
                 {
                     Cursor.lockState = CursorLockMode.Locked;
                     Cursor.visible = false;
@@ -104,6 +148,17 @@ namespace SPTMap
             }
 
             var inRaid = GameUtils.IsInRaid();
+
+            // re-asserted every frame (not just on the M keydown frame) while peeking in a raid -
+            // EFT's own player-control code re-locks/re-hides the cursor every frame during normal
+            // gameplay, which otherwise wins the race against a one-shot Cursor.visible = true set
+            // here and the cursor never actually appears. Only while in a raid - out of raid the
+            // menu already manages the cursor itself (see the OnRaidEnd comment below).
+            if (_peekToggled && inRaid)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
             if (inRaid && !_wasInRaid)
             {
                 OnRaidStart();
@@ -125,8 +180,12 @@ namespace SPTMap
                 TryRetryExtractMarkers();
                 TryRetryDoorMarkers();
                 TryRetryQuestMarkers();
+                TryRetryTransitMarkers();
+                TryRetrySecretMarkers();
                 TryTickQuestMarkers();
                 TryTickOtherPlayers();
+                TryTickBtrMarker();
+                TryTickAirdropMarkers();
             }
             _wasInRaid = inRaid;
 
@@ -166,6 +225,11 @@ namespace SPTMap
             if (Input.GetKeyDown(LandmarkKey))
             {
                 LogLandmark();
+            }
+
+            if (_peekToggled && inRaid && Input.GetKeyDown(TeleportKey))
+            {
+                TryTeleportToMouse();
             }
 
             QuestDebugPanel.HandleInput();
@@ -212,6 +276,94 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidStart quest marker setup exception: {e}");
+            }
+
+            try
+            {
+                _transitMarkerProvider ??= new TransitMarkerProvider();
+                _transitMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart transit marker setup exception: {e}");
+            }
+
+            try
+            {
+                _secretMarkerProvider ??= new SecretMarkerProvider();
+                _secretMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart secret marker setup exception: {e}");
+            }
+
+            try
+            {
+                _btrMarkerProvider ??= new BTRMarkerProvider();
+                _btrMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart BTR marker setup exception: {e}");
+            }
+
+            try
+            {
+                _airdropMarkerProvider ??= new AirdropMarkerProvider();
+                _airdropMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart airdrop marker setup exception: {e}");
+            }
+        }
+
+        private void TryRetryTransitMarkers()
+        {
+            try
+            {
+                _transitMarkerProvider?.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Transit marker retry exception: {e}");
+            }
+        }
+
+        private void TryRetrySecretMarkers()
+        {
+            try
+            {
+                _secretMarkerProvider?.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Secret marker retry exception: {e}");
+            }
+        }
+
+        private void TryTickBtrMarker()
+        {
+            try
+            {
+                _btrMarkerProvider?.Tick();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"BTR marker poll exception: {e}");
+            }
+        }
+
+        private void TryTickAirdropMarkers()
+        {
+            try
+            {
+                _airdropMarkerProvider?.Tick(Time.deltaTime);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Airdrop marker refresh exception: {e}");
             }
         }
 
@@ -313,6 +465,42 @@ namespace SPTMap
                 Plugin.Log.LogError($"OnRaidEnd quest marker teardown exception: {e}");
             }
 
+            try
+            {
+                _transitMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd transit marker teardown exception: {e}");
+            }
+
+            try
+            {
+                _secretMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd secret marker teardown exception: {e}");
+            }
+
+            try
+            {
+                _btrMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd BTR marker teardown exception: {e}");
+            }
+
+            try
+            {
+                _airdropMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd airdrop marker teardown exception: {e}");
+            }
+
             MarkerManager.Clear();
         }
 
@@ -410,6 +598,106 @@ namespace SPTMap
             Plugin.Log.LogInfo(
                 $"[landmark] map='{internalName}' def={(def != null ? def.DisplayName : "NONE")} "
                 + $"raw=({rawMapPos.x:0.###}, {rawMapPos.y:0.###}) rotated=({rotatedPos.x:0.###}, {rotatedPos.y:0.###})");
+        }
+
+        // inverts the screen-space mapping DrawMap used (imageRect + viewMin/viewMax) to turn the
+        // current mouse position back into a world position, then teleports the main player
+        // there. Bounds-checked twice: against the drawn image rect (a click outside it isn't a
+        // map click at all) and against the map's own world-space Bounds (belt-and-suspenders -
+        // should already be implied by the first check, since viewMin/viewMax are clamped inside
+        // Bounds, but cheap to confirm).
+        private void TryTeleportToMouse()
+        {
+            Plugin.Log.LogInfo("[teleport] F8 pressed");
+
+            if (_lastMapImageRect is not { } imageRect || _lastMapDef == null)
+            {
+                Plugin.Log.LogInfo("[teleport] no map drawn yet, ignored");
+                return;
+            }
+
+            var player = GameUtils.GetMainPlayer();
+            if (player == null)
+            {
+                Plugin.Log.LogInfo("[teleport] no main player, ignored");
+                return;
+            }
+
+            // Input.mousePosition is bottom-up (origin bottom-left); imageRect was built in GUI
+            // space (origin top-left, same as Event.current.mousePosition) - flip Y to match.
+            var mouse = Input.mousePosition;
+            var guiMouse = new Vector2(mouse.x, Screen.height - mouse.y);
+
+            if (!imageRect.Contains(guiMouse))
+            {
+                Plugin.Log.LogInfo("[teleport] click outside the map image, ignored");
+                return;
+            }
+
+            var u = (guiMouse.x - imageRect.x) / imageRect.width;
+            var v = 1f - (guiMouse.y - imageRect.y) / imageRect.height;
+            var mapPos = new Vector2(
+                Mathf.Lerp(_lastMapViewMin.x, _lastMapViewMax.x, u),
+                Mathf.Lerp(_lastMapViewMin.y, _lastMapViewMax.y, v));
+
+            var bounds = _lastMapDef.Bounds;
+            if (mapPos.x < bounds.Min.x || mapPos.x > bounds.Max.x || mapPos.y < bounds.Min.y || mapPos.y > bounds.Max.y)
+            {
+                Plugin.Log.LogInfo("[teleport] resolved position outside map bounds, ignored");
+                return;
+            }
+
+            // undo the map's baked-in CoordinateRotation to get back to raw world-space X/Z (the
+            // same rotation LogLandmark/DrawMap apply, just in reverse).
+            var rawMapPos = MathUtils.Rotate90Multiple(mapPos, -_lastMapDef.CoordinateRotation);
+            var currentPos = player.Cast<IPlayer>().Position;
+            var activeLevel = _lastMapDef.HasLevels ? ResolveActiveLevel(_lastMapDef) : null;
+
+            if (!TryFindGroundHeight(activeLevel, rawMapPos.x, rawMapPos.y, currentPos.y, out var groundY))
+            {
+                Plugin.Log.LogInfo("[teleport] no ground found under that point (hole in the map, or outside collision), ignored");
+                return;
+            }
+
+            var targetPos = new Vector3(rawMapPos.x, groundY + TeleportStandOffset, rawMapPos.y);
+
+            Plugin.Log.LogInfo($"[teleport] to ({targetPos.x:0.#}, {targetPos.y:0.#}, {targetPos.z:0.#})");
+            player.Teleport(targetPos, true);
+        }
+
+        // finds the exact ground height under (x, z) via a downward raycast, so the player is
+        // placed precisely on the terrain instead of falling to it (which risks real fall damage,
+        // and doesn't account for how much a "floor"'s actual ground height can vary within
+        // itself - e.g. sloped terrain, stairwells). When the active level has a GameBounds box
+        // covering (x, z), the ray is confined to that box's own height band - this is what stops
+        // a multi-floor map's raycast from punching through to a lower floor's ceiling and calling
+        // that "ground" for the floor actually being shown.
+        private bool TryFindGroundHeight(MapLevel activeLevel, float x, float z, float playerY, out float groundY)
+        {
+            var box = activeLevel?.GameBounds?.FirstOrDefault(b => x >= b.Min.x && x <= b.Max.x && z >= b.Min.z && z <= b.Max.z);
+
+            float rayStartY;
+            float maxDistance;
+            if (box != null)
+            {
+                rayStartY = box.Max.y + 1f;
+                maxDistance = (box.Max.y - box.Min.y) + 5f;
+            }
+            else
+            {
+                rayStartY = playerY + TeleportRaycastFallbackHeight;
+                maxDistance = TeleportRaycastMaxDistance;
+            }
+
+            var origin = new Vector3(x, rayStartY, z);
+            if (Physics.Raycast(origin, Vector3.down, out var hit, maxDistance, ~0, QueryTriggerInteraction.Ignore))
+            {
+                groundY = hit.point.y;
+                return true;
+            }
+
+            groundY = 0f;
+            return false;
         }
 
         private void CycleManualMap(int delta)
@@ -581,6 +869,11 @@ namespace SPTMap
             var viewMax = new Vector2(viewMaxT.x, viewMaxT.y);
 
             var imageRect = FitInside(box, texture.width / (float)texture.height);
+
+            _lastMapImageRect = imageRect;
+            _lastMapViewMin = viewMin;
+            _lastMapViewMax = viewMax;
+            _lastMapDef = def;
 
             var u0 = (viewMin.x - boundsMin.x) / fullSize.x;
             var u1 = (viewMax.x - boundsMin.x) / fullSize.x;
