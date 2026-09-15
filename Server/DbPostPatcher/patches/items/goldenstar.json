@@ -1,0 +1,35 @@
+{
+  "table": "items",
+  "id": "5751a89d24597722aa0e8db0",
+  "description": "GoldenStar: instant use, huge resource pool, near-zero heal costs",
+  "ops": [
+    { "op": "replace", "path": "/_props/medUseTime", "value": 1 },
+    { "op": "replace", "path": "/_props/MaxHpResource", "value": 70000 },
+    { "op": "replace", "path": "/_props/hpResourceRate", "value": 300 },
+    {
+      "op": "add",
+      "path": "/_props/effects_damage/HeavyBleeding",
+      "value": { "cost": 0, "delay": 0, "duration": 60, "fadeOut": 0 }
+    },
+    {
+      "op": "add",
+      "path": "/_props/effects_damage/LightBleeding",
+      "value": { "cost": 0, "delay": 0, "duration": 60, "fadeOut": 0 }
+    },
+    {
+      "op": "add",
+      "path": "/_props/effects_damage/Fracture",
+      "value": { "cost": 0, "delay": 0, "duration": 0, "fadeOut": 0 }
+    },
+    {
+      "op": "add",
+      "path": "/_props/effects_damage/DestroyedPart",
+      "value": { "cost": 0, "delay": 0, "duration": 0, "fadeOut": 0, "healthPenaltyMax": 72, "healthPenaltyMin": 60 }
+    },
+    {
+      "op": "replace",
+      "path": "/_props/effects_health",
+      "value": { "Energy": { "value": 50 }, "Hydration": { "value": 50 } }
+    }
+  ]
+}

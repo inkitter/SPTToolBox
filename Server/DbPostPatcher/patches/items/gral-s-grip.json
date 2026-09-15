@@ -1,0 +1,8 @@
+{
+  "table": "items",
+  "id": "59db3a1d86f77429e05b4e92",
+  "description": "Naroh Arms GRAL-S pistol grip: no size penalty when mounted",
+  "ops": [
+    { "op": "replace", "path": "/_props/ExtraSizeDown", "value": 0 }
+  ]
+}

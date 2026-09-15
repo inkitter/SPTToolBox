@@ -1,0 +1,8 @@
+{
+  "table": "items",
+  "id": "6113cc78d3a39d50044c065a",
+  "description": "F1 Firearms Skeletonized Style 2 PC pistol grip: no size penalty when mounted",
+  "ops": [
+    { "op": "replace", "path": "/_props/ExtraSizeDown", "value": 0 }
+  ]
+}

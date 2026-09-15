@@ -1,0 +1,52 @@
+{
+  "table": "items",
+  "id": "644a3df63b0b6f03e101e065",
+  "description": "B.E. Meyers MAWL-C1+ tactical device: better stats, quieter, more durable, lighter (editmisc2 - same as editmisc but Weight=-1)",
+  "ops": [
+    {
+      "op": "replace",
+      "path": "/_props/Ergonomics",
+      "value": 20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Recoil",
+      "value": -20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Accuracy",
+      "value": 20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Velocity",
+      "value": 20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Weight",
+      "value": -1
+    },
+    {
+      "op": "replace",
+      "path": "/_props/CoolFactor",
+      "value": 100
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Loudness",
+      "value": -100
+    },
+    {
+      "op": "replace",
+      "path": "/_props/DurabilityBurnModificator",
+      "value": 0.01
+    },
+    {
+      "op": "replace",
+      "path": "/_props/HeatFactor",
+      "value": 0.01
+    }
+  ]
+}

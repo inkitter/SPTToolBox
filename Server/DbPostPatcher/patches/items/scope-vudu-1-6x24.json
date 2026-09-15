@@ -1,0 +1,11 @@
+{
+  "table": "items",
+  "id": "5b3b99475acfc432ff4dcbee",
+  "description": "EOTech Vudu 1-6x24 30mm riflescope: wider zoom/FOV range",
+  "ops": [
+    { "op": "replace", "path": "/_props/Zooms/0", "value": [20, 1] },
+    { "op": "replace", "path": "/_props/MinMaxFov/x", "value": 16 },
+    { "op": "replace", "path": "/_props/MinMaxFov/y", "value": 0.5 },
+    { "op": "replace", "path": "/_props/MinMaxFov/z", "value": 4 }
+  ]
+}

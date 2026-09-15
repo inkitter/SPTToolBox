@@ -1,0 +1,27 @@
+{
+  "table": "globals",
+  "description": "Propital stimulant effect: -96% damage taken, +skill rate on a broad set of skills (from patch_globals in patch.ts, was disabled there too)",
+  "ops": [
+    {
+      "op": "replace",
+      "path": "/config/Health/Effects/Stimulator/Buffs/BuffsPropital",
+      "value": [
+        { "AbsoluteValue": true, "BuffType": "DamageModifier", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "", "Value": -0.96 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Endurance", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Strength", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Vitality", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Health", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "StressResistance", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Metabolism", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Intellect", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Charisma", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "RecoilControl", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "AimDrills", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "TroubleShooting", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "Surgery", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "CovertMovement", "Value": 400 },
+        { "AbsoluteValue": true, "BuffType": "SkillRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "MagDrills", "Value": 400 }
+      ]
+    }
+  ]
+}

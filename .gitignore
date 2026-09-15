@@ -4,3 +4,4 @@ obj/
 release/
 local_config.py
 *.zip
+Server/DbPostPatcher/patches.enabled.json

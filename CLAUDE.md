@@ -12,7 +12,12 @@ use bun, not node.
  
 ## What this is
 
-SPTMap is a BepInEx IL2CPP plugin for SPT (Single Player Tarkov) that renders an in-game minimap using Unity's legacy IMGUI system. It is a rewrite of an earlier uGUI-based dynamic maps mod, deliberately avoiding uGUI and Unity.VectorGraphics to sidestep IL2CPP generic-method-unstripping crashes and BSG UI-version churn.
+This repo (SPTToolBox) hosts two independent tools for SPT (Single Player Tarkov):
+
+- **SPTMap** (`Plugin/`) — a BepInEx IL2CPP client plugin that renders an in-game minimap using Unity's legacy IMGUI system. It is a rewrite of an earlier uGUI-based dynamic maps mod, deliberately avoiding uGUI and Unity.VectorGraphics to sidestep IL2CPP generic-method-unstripping crashes and BSG UI-version churn.
+- **DbPostPatcher** (`Server/DbPostPatcher/`) — a server-side C# mod that applies small, targeted JSON patches to SPT's in-memory database once at boot (items, globals, profile templates, repair config, ...), instead of hand-editing the raw database JSON files on disk. See [DbPostPatcher](#dbpostpatcher-server-mod) below.
+
+They deploy to different places (`BepInEx/plugins/sptmap/` vs `user/mods/DbPostPatcher/`) and don't depend on each other — treat them as separate projects that happen to share a repo.
 
 ## Build & deploy
 
@@ -38,7 +43,7 @@ PostBuild auto-copies `SPTMap.dll`, `Newtonsoft.Json.dll`, and `Resources\` to `
 
 ## Release (GitHub)
 
-Releases are published from https://github.com/inkitter/SPTMap via `gh`. **Before publishing, ask the user whether to bump the version number** (tag/csproj `<AssemblyName>`-adjacent version, release title, zip filename) rather than assuming a same-version republish.
+Releases are published from https://github.com/inkitter/SPTToolBox via `gh`. **Before publishing, ask the user whether to bump the version number** (tag/csproj `<AssemblyName>`-adjacent version, release title, zip filename) rather than assuming a same-version republish.
 
 `gh` is installed via winget but isn't on this session's PATH by default — call it by full path: `& "C:\Program Files\GitHub CLI\gh.exe" ...` (PowerShell) or add it to PATH for bash. Confirm auth first: `gh auth status`.
 
@@ -60,8 +65,8 @@ To build and publish (or republish) a release zip for version `vX.Y.Z`:
    ```
 4. Delete the old release (if any) and create the new one with the zip attached:
    ```
-   gh release delete vX.Y.Z --repo inkitter/SPTMap --yes --cleanup-tag=false
-   gh release create vX.Y.Z --repo inkitter/SPTMap --title "SPTMap vX.Y.Z" --notes "..." SPTMap-vX.Y.Z.zip
+   gh release delete vX.Y.Z --repo inkitter/SPTToolBox --yes --cleanup-tag=false
+   gh release create vX.Y.Z --repo inkitter/SPTToolBox --title "SPTMap vX.Y.Z" --notes "..." SPTMap-vX.Y.Z.zip
    ```
 
 ## Asset build scripts (`py\`)
@@ -76,7 +81,29 @@ Both scripts require `cairosvg` and `pillow`. Install via `uv add <pkg>` in `D:\
 
 Run these from the repo root (e.g. `python py\update_maps_floors.py`) — their output paths resolve relative to the script's own location, one level up. After running either asset script, `dotnet build` from `Plugin\` to redeploy.
 
-## Architecture
+## DbPostPatcher (server mod)
+
+`Server/DbPostPatcher/` is a standalone C# server mod (its own `.csproj`, unrelated to `Plugin/`) that patches SPT's in-memory database once at boot, replacing what used to be a one-off TypeScript script (`d:\Git\SPT\ZServer_mod\editor\patch.ts`) that hand-edited the raw database JSON files on disk — fragile across SPT updates and left no record of *why* a value was changed.
+
+### Build & deploy
+
+```powershell
+# From Server\DbPostPatcher\
+dotnet build
+```
+
+`dotnet build` deploys `DbPostPatcher.dll` + every `patches\**\*.json` file into `$(SptRuntimeDir)\user\mods\DbPostPatcher\`. `SptRuntimeDir` defaults to `D:\Game\SPT5\SPT_Runtime` in the tracked csproj — override per machine in `Server\DbPostPatcher\DbPostPatcher.csproj.user` (gitignored), same pattern as `Plugin\SPTMap.csproj.user`.
+
+The csproj references the server's own already-built DLLs (`SPTarkov.Server.Core.dll` etc. under `SptRuntimeDir`) via `<Reference>`+`HintPath`, **not** `ProjectReference` to `server-csharp`'s source projects — a `ProjectReference` would drag that entire (large) solution into every build here.
+
+### How patching works
+
+- Each change is its own small JSON file under `patches\`, written as a restricted form of [RFC 6902 JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`/`replace`/`remove` + JSON Pointer paths), applied against the serialization of just the one object the patch targets (`table`+`id`) — not the whole database — so a patch only ever touches the fields it lists. See [`patches/README.md`](Server/DbPostPatcher/patches/README.md) for the full format, including the `replace` (field must already exist, fails loudly if not) vs `add` (create-or-overwrite) distinction and why it matters.
+- `PatchLoaderMod` (`IOnLoad`, `OnLoadOrder.Preload`) reads `patches.enabled.json`'s `enabled` list and applies just those files. That config's `available` list is regenerated by the mod on every boot from whatever `*.json` files actually exist under `patches\` (skipping `_`-prefixed reference-only files) — it's never hand-maintained, so it can't go stale.
+- `PatchTableRegistry` maps a patch's `table` name to the live object: `items`/`profileTemplates` write straight into `TemplateTable`'s dictionaries; `globals`/`config:repair` are DI singletons other services already hold references to, so those go through a reflection-based property copy instead of a reference swap (works even on `record`'s `init`-only properties — `init` is a C#-compiler-only restriction, not enforced by the CLR, so `PropertyInfo.SetValue` still works post-construction).
+- A failure on any single patch operation (missing field, unknown id, bad path) is logged and only that operation is skipped — never crashes the server, never blocks the rest of that file or other patch files. **Always run the server once after adding a new patch file** — see [`NOTES.md`](Server/DbPostPatcher/NOTES.md) #7 for two real bugs (a field that didn't exist where expected, a missing required field) this caught only by actually running it, not by reading the JSON.
+
+## SPTMap architecture
 
 ### Plugin lifecycle
 

@@ -1,0 +1,8 @@
+{
+  "table": "items",
+  "id": "6171407e50224f204c1da3c5",
+  "description": "Recknagel Era-Tac 30mm ring scope mount: no size penalty when mounted",
+  "ops": [
+    { "op": "replace", "path": "/_props/ExtraSizeUp", "value": 0 }
+  ]
+}

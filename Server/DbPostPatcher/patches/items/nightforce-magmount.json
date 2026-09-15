@@ -1,0 +1,9 @@
+{
+  "table": "items",
+  "id": "5aa66c72e5b5b00016327c93",
+  "description": "Nightforce Magmount 34mm ring scope mount: no size penalty when mounted (original patch.ts had two separate commented lines against this id, one mislabeled 'AGS-74' - verified via tools/check_item_names.py that both were actually targeting this same Nightforce mount, so merged into one file)",
+  "ops": [
+    { "op": "replace", "path": "/_props/ExtraSizeDown", "value": 0 },
+    { "op": "replace", "path": "/_props/ExtraSizeUp", "value": 0 }
+  ]
+}

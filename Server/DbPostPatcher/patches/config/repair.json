@@ -1,0 +1,7 @@
+{
+  "table": "config:repair",
+  "description": "patch_config from patch.ts - disable randomized durability loss on repair",
+  "ops": [
+    { "op": "replace", "path": "/applyRandomizeDurabilityLoss", "value": false }
+  ]
+}

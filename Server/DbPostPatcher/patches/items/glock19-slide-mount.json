@@ -1,0 +1,8 @@
+{
+  "table": "items",
+  "id": "5a71e4f48dc32e001207fb26",
+  "description": "Glock ZEV Tech HEX Spartan RMR slide (comment in patch.ts said 'Glock 19', this is the hex-cut slide part for it): also allow attaching a Lobaev Arms 30mm mount (glock19_hex_rec/pushset). Same append-not-replace shape as aimtech-tiger-shark-mount.json.",
+  "ops": [
+    { "op": "add", "path": "/_props/Slots/0/_props/filters/0/Filter/-", "value": "57c69dd424597774c03b7bbc" }
+  ]
+}

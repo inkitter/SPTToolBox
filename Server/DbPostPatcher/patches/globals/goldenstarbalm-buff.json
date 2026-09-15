@@ -1,0 +1,14 @@
+{
+  "table": "globals",
+  "description": "GoldenStarBalm stimulant effect: +HealthRate/+StaminaRate (from patch_globals in patch.ts, was disabled there too)",
+  "ops": [
+    {
+      "op": "replace",
+      "path": "/config/Health/Effects/Stimulator/Buffs/BuffsGoldenStarBalm",
+      "value": [
+        { "AbsoluteValue": true, "BuffType": "HealthRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "", "Value": 1 },
+        { "AbsoluteValue": true, "BuffType": "StaminaRate", "Chance": 1, "Delay": 1, "Duration": 6000, "SkillName": "", "Value": 3 }
+      ]
+    }
+  ]
+}

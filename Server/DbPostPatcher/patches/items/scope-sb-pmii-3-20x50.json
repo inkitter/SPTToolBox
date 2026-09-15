@@ -1,0 +1,11 @@
+{
+  "table": "items",
+  "id": "61714eec290d254f5e6b2ffc",
+  "description": "Schmidt & Bender PM II 3-20x50 34mm riflescope: wider zoom/FOV range",
+  "ops": [
+    { "op": "replace", "path": "/_props/Zooms/0", "value": [0.5, 24] },
+    { "op": "replace", "path": "/_props/MinMaxFov/x", "value": 16 },
+    { "op": "replace", "path": "/_props/MinMaxFov/y", "value": 0.5 },
+    { "op": "replace", "path": "/_props/MinMaxFov/z", "value": 4 }
+  ]
+}

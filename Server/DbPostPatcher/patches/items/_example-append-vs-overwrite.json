@@ -1,0 +1,8 @@
+{
+  "table": "items",
+  "id": "5448bc234bdc2d3c308b4569",
+  "description": "REFERENCE ONLY (not meant to be enabled) - shows 'add' appending one entry to an existing Filter array instead of replacing the whole array. Contrast with gamma-container.json / sicc.json, which intentionally replace the whole Filter array to restrict it to one item type.",
+  "ops": [
+    { "op": "add", "path": "/_props/Grids/0/_props/filters/0/Filter/-", "value": "5efb0da7a29a85116f6ea05f" }
+  ]
+}

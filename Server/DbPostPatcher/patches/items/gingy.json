@@ -1,0 +1,9 @@
+{
+  "table": "items",
+  "id": "62a09d3bcf4a99369e262447",
+  "description": "Gingy: bigger grid",
+  "ops": [
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsH", "value": 12 },
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsV", "value": 12 }
+  ]
+}

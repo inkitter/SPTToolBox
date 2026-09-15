@@ -1,0 +1,16 @@
+{
+  "table": "profileTemplates",
+  "id": "Unheard.usec",
+  "description": "New-character template health (applies to newly created Unheard/usec profiles, not existing saves)",
+  "ops": [
+    { "op": "replace", "path": "/character/Health/Hydration", "value": { "Current": 200, "Maximum": 200 } },
+    { "op": "replace", "path": "/character/Health/Energy", "value": { "Current": 190, "Maximum": 190 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/Chest/Health", "value": { "Current": 3000, "Maximum": 3000 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/Head/Health", "value": { "Current": 3000, "Maximum": 3000 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/LeftArm/Health", "value": { "Current": 150, "Maximum": 150 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/LeftLeg/Health", "value": { "Current": 150, "Maximum": 150 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/RightArm/Health", "value": { "Current": 150, "Maximum": 150 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/RightLeg/Health", "value": { "Current": 150, "Maximum": 150 } },
+    { "op": "replace", "path": "/character/Health/BodyParts/Stomach/Health", "value": { "Current": 150, "Maximum": 150 } }
+  ]
+}

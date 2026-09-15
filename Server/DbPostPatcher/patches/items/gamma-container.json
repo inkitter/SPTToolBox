@@ -1,0 +1,12 @@
+{
+  "table": "items",
+  "id": "665ee77ccf2d642e98220bca",
+  "description": "Gamma container: lighter, bigger, restricted to a single item type (overwrite intentional - only THIS item type may go in)",
+  "ops": [
+    { "op": "replace", "path": "/_props/Weight", "value": -15 },
+    { "op": "replace", "path": "/_props/Grids/0/_props/filters/0/ExcludedFilter", "value": [] },
+    { "op": "replace", "path": "/_props/Grids/0/_props/filters/0/Filter", "value": ["54009119af1c881c07000029"] },
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsH", "value": 4 },
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsV", "value": 4 }
+  ]
+}

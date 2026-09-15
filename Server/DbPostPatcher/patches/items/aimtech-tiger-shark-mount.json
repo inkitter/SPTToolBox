@@ -1,0 +1,8 @@
+{
+  "table": "items",
+  "id": "5a7ad55551dfba0015068f42",
+  "description": "Aimtech Tiger Shark sight mount: also allow attaching a Lobaev Arms 30mm mount (editmount/pushset). Uses 'add' + '/-' to append one entry rather than replacing the whole Filter list - contrast with mag-pmag-gen-m3-556.json's intentional full-array replace. Original deduped via a JS Set; this static append doesn't check whether 57c69dd424597774c03b7bbc is already in the list, so if a future SPT update already allows it, this would add a harmless duplicate entry (no gameplay effect, just a slightly redundant list) rather than an error.",
+  "ops": [
+    { "op": "add", "path": "/_props/Slots/0/_props/filters/0/Filter/-", "value": "57c69dd424597774c03b7bbc" }
+  ]
+}

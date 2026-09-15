@@ -1,0 +1,21 @@
+{
+  "table": "profileTemplates",
+  "id": "Unheard.usec",
+  "description": "Ports patch_tplprofile's THICC/SICC/etc hideout-slot injection from patch.ts. Original code cloned an *existing* hideout-slotted item to copy its parentId/location shape and stamped a fresh random _id per run; a static JSON patch can't call a function, so '_id' values below are fixed placeholders (690000000000000000000001..0e) and 'parentId' is a fixed value - both verified against the live Unheard.usec template via tools/check_hideout_ids.py (parentId=664115f68b8ae85875060b39, confirmed the single value actually used there; no _id collisions found). Re-run that script after any templates/profiles.json update before re-enabling, in case the parentId changed. Original guarded with 'if not already added' because it rewrote the JSON file on disk and would otherwise duplicate on every re-run; this engine instead re-patches a fresh in-memory copy of the template every server boot (nothing is written back to templates/profiles.json), so the plain 'add' appends here are safe without that guard - see NOTES.md.",
+  "ops": [
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000001", "_tpl": "5c0a840b86f7742ffa4f2482", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000002", "_tpl": "5c0a840b86f7742ffa4f2482", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000003", "_tpl": "5b6d9ce188a4501afc1b2b25", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000004", "_tpl": "5d235bb686f77443f4331278", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000005", "_tpl": "5d235bb686f77443f4331278", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000006", "_tpl": "5d235bb686f77443f4331278", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000007", "_tpl": "619cbf7d23893217ec30b689", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000008", "_tpl": "5c093db286f7740a1b2617e3", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "690000000000000000000009", "_tpl": "5c093e3486f77430cb02e593", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "69000000000000000000000a", "_tpl": "5aafbcd986f7745e590fff23", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "69000000000000000000000b", "_tpl": "62a09d3bcf4a99369e262447", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "69000000000000000000000c", "_tpl": "591094e086f7747caa7bb2ef", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "69000000000000000000000d", "_tpl": "591094e086f7747caa7bb2ef", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } },
+    { "op": "add", "path": "/character/Inventory/items/-", "value": { "_id": "69000000000000000000000e", "_tpl": "5910968f86f77425cf569c32", "parentId": "664115f68b8ae85875060b39", "slotId": "hideout" } }
+  ]
+}

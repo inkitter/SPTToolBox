@@ -1,0 +1,52 @@
+{
+  "table": "items",
+  "id": "56def37dd2720bec348b456a",
+  "description": "SureFire X400 Ultra flashlight/laser: better stats, quieter, more durable (editmisc)",
+  "ops": [
+    {
+      "op": "replace",
+      "path": "/_props/Ergonomics",
+      "value": 20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Recoil",
+      "value": -20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Accuracy",
+      "value": 20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Velocity",
+      "value": 20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Weight",
+      "value": -5
+    },
+    {
+      "op": "replace",
+      "path": "/_props/CoolFactor",
+      "value": 100
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Loudness",
+      "value": -100
+    },
+    {
+      "op": "replace",
+      "path": "/_props/DurabilityBurnModificator",
+      "value": 0.01
+    },
+    {
+      "op": "replace",
+      "path": "/_props/HeatFactor",
+      "value": 0.01
+    }
+  ]
+}

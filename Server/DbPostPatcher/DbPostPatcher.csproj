@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>DbPostPatcher</AssemblyName>
+    <RootNamespace>DbPostPatcher</RootNamespace>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <!--
+    Deploys into, and is compiled against, the live SPT server install - same pattern as
+    ../../Plugin's TarkovDir. Override SptRuntimeDir in DbPostPatcher.csproj.user
+    (gitignored) if yours lives somewhere other than D:\Game\SPT5\SPT_Runtime.
+  -->
+  <PropertyGroup>
+    <SptRuntimeDir Condition="'$(SptRuntimeDir)' == ''">D:\Game\SPT5\SPT_Runtime</SptRuntimeDir>
+    <ModDeployDir>$(SptRuntimeDir)\user\mods\DbPostPatcher</ModDeployDir>
+  </PropertyGroup>
+
+  <!--
+    Reference the server's own already-built DLLs, not server-csharp's source projects - a
+    ProjectReference would drag the entire (huge) server solution into every build here.
+    Private=false: these ship with the server itself, ModLoader loads our DLL into the same
+    AssemblyLoadContext as server core, so don't copy-local duplicate copies into our own
+    output/mod folder (a second copy would be a distinct assembly identity to the CLR and break
+    type checks against the server's own instances).
+  -->
+  <ItemGroup>
+    <Reference Include="SPTarkov.Common">
+      <HintPath>$(SptRuntimeDir)\SPTarkov.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.DI">
+      <HintPath>$(SptRuntimeDir)\SPTarkov.DI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Reflection">
+      <HintPath>$(SptRuntimeDir)\SPTarkov.Reflection.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Assets">
+      <HintPath>$(SptRuntimeDir)\SPTarkov.Server.Assets.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Server.Core">
+      <HintPath>$(SptRuntimeDir)\SPTarkov.Server.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SemanticVersioning">
+      <HintPath>$(SptRuntimeDir)\SemanticVersioning.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="DeployMod" AfterTargets="Build">
+    <ItemGroup>
+      <ModOutputFiles Include="$(TargetDir)DbPostPatcher.dll" />
+      <PatchFiles Include="patches\**\*.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModOutputFiles)" DestinationFolder="$(ModDeployDir)" SkipUnchangedFiles="true" />
+    <Copy
+      SourceFiles="@(PatchFiles)"
+      DestinationFolder="$(ModDeployDir)\patches\%(RecursiveDir)"
+      SkipUnchangedFiles="true"
+    />
+    <!-- Never overwrite an already-deployed real config with the repo's .example - only seed it if missing. -->
+    <Copy
+      SourceFiles="patches.enabled.json"
+      DestinationFolder="$(ModDeployDir)"
+      Condition="Exists('patches.enabled.json') And !Exists('$(ModDeployDir)\patches.enabled.json')"
+    />
+  </Target>
+</Project>

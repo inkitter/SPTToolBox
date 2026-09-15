@@ -1,0 +1,11 @@
+{
+  "table": "items",
+  "id": "5d235bb686f77443f4331278",
+  "description": "SICC pouch: bigger, restricted to a single item type (overwrite intentional)",
+  "ops": [
+    { "op": "replace", "path": "/_props/Grids/0/_props/filters/0/ExcludedFilter", "value": [] },
+    { "op": "replace", "path": "/_props/Grids/0/_props/filters/0/Filter", "value": ["54009119af1c881c07000029"] },
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsH", "value": 12 },
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsV", "value": 16 }
+  ]
+}

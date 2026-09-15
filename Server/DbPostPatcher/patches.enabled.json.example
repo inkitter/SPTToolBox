@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this file to patches.enabled.json (gitignored) - or just build once, the engine creates it automatically on first boot. List the patch files (relative to patches/) you want active in 'enabled'. 'available' isn't hand-maintained here - the engine overwrites it on every boot with whatever's actually in patches/, so don't bother listing it in this starter file.",
+  "available": [],
+  "enabled": []
+}

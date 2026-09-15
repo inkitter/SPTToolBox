@@ -1,0 +1,9 @@
+{
+  "table": "items",
+  "id": "5aafbde786f774389d0cbc0f",
+  "description": "Ammo box: bigger grid",
+  "ops": [
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsH", "value": 12 },
+    { "op": "replace", "path": "/_props/Grids/0/_props/cellsV", "value": 12 }
+  ]
+}

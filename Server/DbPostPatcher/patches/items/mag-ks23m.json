@@ -1,0 +1,37 @@
+{
+  "table": "items",
+  "id": "5f647d9f8499b57dc40ddb93",
+  "description": "KS-23M 3-shell -> 5-shell magazine cap (editCart)",
+  "ops": [
+    {
+      "op": "replace",
+      "path": "/_props/Cartridges/0/_max_count",
+      "value": 5
+    },
+    {
+      "op": "replace",
+      "path": "/_props/LoadUnloadModifier",
+      "value": -20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/CheckTimeModifier",
+      "value": -20
+    },
+    {
+      "op": "replace",
+      "path": "/_props/MalfunctionChance",
+      "value": 0
+    },
+    {
+      "op": "replace",
+      "path": "/_props/Ergonomics",
+      "value": 5
+    },
+    {
+      "op": "replace",
+      "path": "/_props/ExtraSizeDown",
+      "value": 0
+    }
+  ]
+}

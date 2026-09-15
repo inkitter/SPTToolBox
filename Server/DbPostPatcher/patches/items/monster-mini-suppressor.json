@@ -1,0 +1,11 @@
+{
+  "table": "items",
+  "id": "55d6190f4bdc2d87028b4567",
+  "description": "SureFire SOCOM556-MINI MONSTER suppressor: quieter, more durable (editmuz - the Ergonomics/Recoil/Velocity/Accuracy lines were commented out in the original too, only these four were live)",
+  "ops": [
+    { "op": "replace", "path": "/_props/Loudness", "value": -100 },
+    { "op": "replace", "path": "/_props/CoolFactor", "value": 100 },
+    { "op": "replace", "path": "/_props/DurabilityBurnModificator", "value": 0.01 },
+    { "op": "replace", "path": "/_props/HeatFactor", "value": 0.01 }
+  ]
+}
