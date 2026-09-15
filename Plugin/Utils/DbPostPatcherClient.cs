@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -45,14 +48,32 @@ namespace SPTMap.Utils
         { Timeout = TimeSpan.FromSeconds(5) };
         private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+        // BackendAvailable/LastStatus/Catalog used to be three independent static properties, each
+        // written separately by CheckBackendCoreAsync with a network await in between (ping, then a
+        // second round trip for the catalog). QuestDebugPanel's OnGUI runs multiple passes per frame
+        // (Layout, then Repaint) and reads these on the Unity main thread while the async continuation
+        // could land on a different thread between the two writes - so BackendAvailable could already
+        // read true (catalog section starts rendering) while Catalog was still the old/empty array on
+        // one pass and populated on the next, changing how many GUILayout.BeginHorizontal/EndHorizontal
+        // calls DrawGiveItemSection made between passes of the *same* frame. Unity flags that mismatch
+        // as "GUILayout: Mismatched LayoutGroup.repaint" and aborts OnGUI. Bundling the three into one
+        // record swapped via a single reference assignment (atomic in .NET) means every read within one
+        // OnGUI call - and across the Layout/Repaint passes of one frame - sees one consistent snapshot.
+        private static State _state = State.Empty;
+
+        private sealed record State(bool? BackendAvailable, string LastStatus, CatalogEntry[] Catalog)
+        {
+            public static readonly State Empty = new(null, "", Array.Empty<CatalogEntry>());
+        }
+
         // null = not checked yet, true/false = last ping result. Re-checked once per panel open
         // (see QuestDebugPanel), not on every frame - a ping is still a real network round trip.
-        public static bool? BackendAvailable { get; private set; }
-        public static string LastStatus { get; private set; } = "";
+        public static bool? BackendAvailable => _state.BackendAvailable;
+        public static string LastStatus => _state.LastStatus;
 
         // Fetched from /dbpostpatcher/catalog rather than duplicated client-side, so this list
         // (Server/DbPostPatcher/Routing/GiveItemCatalog.cs) has exactly one place it's maintained.
-        public static CatalogEntry[] Catalog { get; private set; } = Array.Empty<CatalogEntry>();
+        public static CatalogEntry[] Catalog => _state.Catalog;
 
         public sealed class CatalogEntry
         {
@@ -61,6 +82,49 @@ namespace SPTMap.Utils
 
             [JsonPropertyName("label")]
             public string Label { get; set; }
+        }
+
+        // Mirrors Server/DbPostPatcher/Routing/CharacterDebugRouter.cs's VitalState/SkillState/
+        // CharacterState records - not shared code between the two projects (client/server don't
+        // reference each other), just kept in sync by hand like CatalogEntry already is.
+        private static CharacterState _characterState;
+
+        public static CharacterState LatestCharacterState => _characterState;
+
+        public sealed class VitalState
+        {
+            [JsonPropertyName("current")]
+            public double Current { get; set; }
+
+            [JsonPropertyName("maximum")]
+            public double Maximum { get; set; }
+        }
+
+        public sealed class SkillState
+        {
+            [JsonPropertyName("id")]
+            public string Id { get; set; }
+
+            [JsonPropertyName("progress")]
+            public double Progress { get; set; }
+        }
+
+        public sealed class CharacterState
+        {
+            [JsonPropertyName("bodyParts")]
+            public Dictionary<string, VitalState> BodyParts { get; set; }
+
+            [JsonPropertyName("hydration")]
+            public VitalState Hydration { get; set; }
+
+            [JsonPropertyName("energy")]
+            public VitalState Energy { get; set; }
+
+            [JsonPropertyName("temperature")]
+            public VitalState Temperature { get; set; }
+
+            [JsonPropertyName("skills")]
+            public List<SkillState> Skills { get; set; }
         }
 
         private readonly struct SessionInfo
@@ -106,7 +170,7 @@ namespace SPTMap.Utils
 
             if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(backendUrl))
             {
-                LastStatus = "Couldn't find -token/-config BackendUrl in the game's launch command line";
+                _state = new State(false, "Couldn't find -token/-config BackendUrl in the game's launch command line", Array.Empty<CatalogEntry>());
                 return false;
             }
 
@@ -127,53 +191,75 @@ namespace SPTMap.Utils
             {
                 if (!TryGetSession(out var session))
                 {
-                    BackendAvailable = false;
+                    _state = new State(false, "", Array.Empty<CatalogEntry>());
                     return;
                 }
 
                 using var response = await Http.GetAsync($"{session.BaseUrl}/singleplayer/dbpostpatcher/ping").ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
-                    BackendAvailable = false;
-                    LastStatus = $"Backend responded {(int)response.StatusCode} to /singleplayer/dbpostpatcher/ping - DbPostPatcher likely not deployed on this backend";
+                    _state = new State(
+                        false,
+                        $"Backend responded {(int)response.StatusCode} to /singleplayer/dbpostpatcher/ping - DbPostPatcher likely not deployed on this backend",
+                        Array.Empty<CatalogEntry>());
                     return;
                 }
 
-                var body = StripBom(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+                var body = await ReadBodyAsync(response.Content).ConfigureAwait(false);
                 var ping = JsonSerializer.Deserialize<PingBody>(body, JsonOptions);
-                BackendAvailable = ping?.Data?.Mod == "DbPostPatcher";
-                if (BackendAvailable != true)
+                var available = ping?.Data?.Mod == "DbPostPatcher";
+                if (!available)
                 {
-                    LastStatus = "Backend responded but not with DbPostPatcher's ping shape - probably a different/older mod version";
+                    _state = new State(
+                        false,
+                        "Backend responded but not with DbPostPatcher's ping shape - probably a different/older mod version",
+                        Array.Empty<CatalogEntry>());
                     return;
                 }
 
-                LastStatus = $"DbPostPatcher v{ping.Data.Version} detected on backend";
+                var lastStatus = $"DbPostPatcher v{ping.Data.Version} detected on backend";
+                var catalog = Array.Empty<CatalogEntry>();
 
                 using var catalogResponse = await Http.GetAsync($"{session.BaseUrl}/singleplayer/dbpostpatcher/catalog").ConfigureAwait(false);
                 if (catalogResponse.IsSuccessStatusCode)
                 {
-                    var catalogBody = StripBom(await catalogResponse.Content.ReadAsStringAsync().ConfigureAwait(false));
+                    var catalogBody = await ReadBodyAsync(catalogResponse.Content).ConfigureAwait(false);
                     var catalogEnvelope = JsonSerializer.Deserialize<CatalogBody>(catalogBody, JsonOptions);
-                    Catalog = catalogEnvelope?.Data ?? Array.Empty<CatalogEntry>();
+                    catalog = catalogEnvelope?.Data ?? Array.Empty<CatalogEntry>();
                 }
+
+                // Single reference-assignment publishes availability + catalog together - see the
+                // State comment above for why the two used to disagree mid-frame.
+                _state = new State(true, lastStatus, catalog);
             }
             catch (Exception e)
             {
-                BackendAvailable = false;
-                LastStatus = $"Ping failed: {DescribeException(e)} - is the DbPostPatcher mod deployed on this backend?";
+                _state = new State(
+                    false,
+                    $"Ping failed: {DescribeException(e)} - is the DbPostPatcher mod deployed on this backend?",
+                    Array.Empty<CatalogEntry>());
             }
         }
 
-        // The server writes its JSON responses with a leading UTF-8 BOM (0xEF 0xBB 0xBF) - the
-        // string-based JsonSerializer.Deserialize overload doesn't skip a leading BOM CHARACTER
-        // (U+FEFF) the way the stream/UTF8JsonReader-based overloads do, so it fails to parse with
-        // "'0xEF' is an invalid start of a value" (that's literally the BOM's first raw byte
-        // showing through, not a real JSON token). Confirmed via the server's own request log
-        // (the request/response round trip completes fine - this is purely a parsing-side issue).
-        private static string StripBom(string s)
+        // Every SPT server response body is zlib-deflate compressed, always - not something
+        // "/singleplayer/" or any other path exempts (that prefix only skips the extra byte-
+        // shuffle permutation layer on top, see SptHttpListener.WriteFrameAsync/ShouldShuffleResponse
+        // in server-csharp: WriteFrameAsync always deflates into a frame first, then conditionally
+        // shuffles that frame). A raw read of the bytes looks like noise ("'0xEF'/'0x00' is an
+        // invalid start of a value" when treated as text) because it *is* compressed binary, not
+        // malformed JSON - confirmed by manually zlib-inflating a captured response with Python
+        // (wbits=15, standard zlib header 0x78 0xDA) and getting back the exact expected JSON.
+        private static async Task<string> ReadBodyAsync(HttpContent content)
         {
-            return s.Length > 0 && s[0] == '﻿' ? s.Substring(1) : s;
+            using var compressed = new MemoryStream(await content.ReadAsByteArrayAsync().ConfigureAwait(false));
+            using var zlib = new ZLibStream(compressed, CompressionMode.Decompress);
+            using var reader = new StreamReader(zlib, Encoding.UTF8);
+            var text = await reader.ReadToEndAsync().ConfigureAwait(false);
+
+            // Belt-and-suspenders: strip a leading UTF-8 BOM character if the decompressed text
+            // still has one - JsonSerializer's string overload doesn't skip it the way the
+            // stream-based overloads do.
+            return text.Length > 0 && text[0] == '﻿' ? text.Substring(1) : text;
         }
 
         // e.Message alone can be an unhelpful bare code (see the ServicePointManager comment
@@ -218,7 +304,7 @@ namespace SPTMap.Utils
                 request.Headers.Add("Cookie", $"PHPSESSID={session.SessionId}");
 
                 using var response = await Http.SendAsync(request).ConfigureAwait(false);
-                var body = StripBom(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+                var body = await ReadBodyAsync(response.Content).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -239,6 +325,85 @@ namespace SPTMap.Utils
             {
                 onResult($"Give '{label}' failed: {DescribeException(e)}");
             }
+        }
+
+        // Fire-and-forget - fetches the live server-side Health/Skills snapshot to populate the F9
+        // panel's Character tab. Call once per panel open/tab switch, not every frame - same
+        // reasoning as CheckBackendAsync. onResult (off the main thread, like GiveItemAsync's) gets
+        // either the fetched CharacterState or null on failure, plus a human-readable status string.
+        public static void FetchCharacterStateAsync(Action<CharacterState, string> onResult)
+        {
+            _ = RequestCharacterStateAsync("state", onResult);
+        }
+
+        public static void SetBodyPartAsync(string part, double maxValue, Action<CharacterState, string> onResult)
+        {
+            _ = RequestCharacterStateAsync($"set-bodypart/{part}/{maxValue.ToString(System.Globalization.CultureInfo.InvariantCulture)}", onResult);
+        }
+
+        public static void SetVitalAsync(string vitalName, double maxValue, Action<CharacterState, string> onResult)
+        {
+            _ = RequestCharacterStateAsync($"set-vital/{vitalName}/{maxValue.ToString(System.Globalization.CultureInfo.InvariantCulture)}", onResult);
+        }
+
+        public static void SetSkillAsync(string skillId, double progress, Action<CharacterState, string> onResult)
+        {
+            _ = RequestCharacterStateAsync($"set-skill/{skillId}/{progress.ToString(System.Globalization.CultureInfo.InvariantCulture)}", onResult);
+        }
+
+        // Every character route (state/set-bodypart/set-vital/set-skill) is a GET with no body -
+        // same reasoning as give-item - and returns the same CharacterStateBody envelope shape
+        // (the mutating ones return the post-mutation state so the panel can refresh in one round
+        // trip instead of a set + a separate re-fetch).
+        private static async Task RequestCharacterStateAsync(string routeSuffix, Action<CharacterState, string> onResult)
+        {
+            try
+            {
+                if (!TryGetSession(out var session))
+                {
+                    onResult(null, $"Request failed: {LastStatus}");
+                    return;
+                }
+
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Get, $"{session.BaseUrl}/singleplayer/dbpostpatcher/character/{routeSuffix}");
+                request.Headers.Add("Cookie", $"PHPSESSID={session.SessionId}");
+
+                using var response = await Http.SendAsync(request).ConfigureAwait(false);
+                var body = await ReadBodyAsync(response.Content).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    onResult(null, $"Request failed: HTTP {(int)response.StatusCode} - {body}");
+                    return;
+                }
+
+                var parsed = JsonSerializer.Deserialize<CharacterStateBody>(body, JsonOptions);
+                if (parsed?.Err is not (null or 0))
+                {
+                    onResult(null, $"Request failed: {parsed.ErrMsg ?? "server rejected the request"}");
+                    return;
+                }
+
+                _characterState = parsed.Data;
+                onResult(parsed.Data, "OK");
+            }
+            catch (Exception e)
+            {
+                onResult(null, $"Request failed: {DescribeException(e)}");
+            }
+        }
+
+        private sealed class CharacterStateBody
+        {
+            [JsonPropertyName("err")]
+            public int? Err { get; set; }
+
+            [JsonPropertyName("errmsg")]
+            public string ErrMsg { get; set; }
+
+            [JsonPropertyName("data")]
+            public CharacterState Data { get; set; }
         }
 
         private sealed class ErrorEnvelope

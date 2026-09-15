@@ -1,0 +1,14 @@
+{
+  "items": [
+    { "itemTemplateId": "5c0a840b86f7742ffa4f2482", "label": "THICC item case" },
+    { "itemTemplateId": "5b6d9ce188a4501afc1b2b25", "label": "THICC weapon case" },
+    { "itemTemplateId": "5d235bb686f77443f4331278", "label": "SICC pouch" },
+    { "itemTemplateId": "619cbf7d23893217ec30b689", "label": "Injector case" },
+    { "itemTemplateId": "5c093db286f7740a1b2617e3", "label": "Mr. Holodilnick's thermal bag" },
+    { "itemTemplateId": "5c093e3486f77430cb02e593", "label": "Dogtag case" },
+    { "itemTemplateId": "5aafbcd986f7745e590fff23", "label": "Medicine case" },
+    { "itemTemplateId": "62a09d3bcf4a99369e262447", "label": "Gingy keytool" },
+    { "itemTemplateId": "591094e086f7747caa7bb2ef", "label": "Armor repair kit" },
+    { "itemTemplateId": "5910968f86f77425cf569c32", "label": "Weapon repair kit" }
+  ]
+}

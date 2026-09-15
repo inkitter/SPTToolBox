@@ -2,7 +2,8 @@
   "DisplayName": "Ground Zero",
   "MapInternalNames": [
     "sandbox",
-    "sandbox_high"
+    "sandbox_high",
+    "sandbox_start"
   ],
   "ImagePath": "Maps/GroundZero/GroundZero_L0.png",
   "Bounds": {

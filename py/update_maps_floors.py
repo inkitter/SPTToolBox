@@ -37,7 +37,10 @@ OUT_ROOT = os.path.join(REPO_ROOT, "Plugin", "Resources", "Maps")
 MAP_TARGETS = {
     "customs": ("Customs", "Customs", ["bigmap"]),
     "factory": ("Factory", "Factory", ["factory4_day", "factory4_night"]),
-    "ground-zero": ("GroundZero", "Ground Zero", ["sandbox", "sandbox_high"]),
+    # "sandbox_start" is Ground Zero's brief pre-raid transition location id, seen in-game before
+    # the real "sandbox"/"sandbox_high" location loads - without it MapUtils logs a "No map def"
+    # warning every frame for the duration of that transition.
+    "ground-zero": ("GroundZero", "Ground Zero", ["sandbox", "sandbox_high", "sandbox_start"]),
     "interchange": ("Interchange", "Interchange", ["Interchange"]),
     "lighthouse": ("Lighthouse", "Lighthouse", ["lighthouse"]),
     "reserve": ("Reserve", "Reserve", ["rezervbase"]),

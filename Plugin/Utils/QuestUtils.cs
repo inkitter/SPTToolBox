@@ -21,6 +21,14 @@ namespace SPTMap.Utils
         private static List<TriggerWithId> _triggersWithIds;
         private static List<LootItem> _questItems;
 
+        // Not an error case - most incomplete quests target a zone on a *different* map than the
+        // one currently loaded, so "zone not found here" is the common case, not the exception.
+        // QuestMarkerProvider re-derives every quest's markers on a 3s Tick for the whole raid, so
+        // logging this unconditionally would repeat the same "not on this map" line for the same
+        // zoneId every 3 seconds for the entire raid. Once per distinct zoneId per raid is enough to
+        // still catch a genuine typo'd/renamed zone id on the *current* map.
+        private static readonly HashSet<string> _warnedMissingZoneIds = new();
+
         internal static void TryCaptureQuestData()
         {
             var gameWorld = Singleton<GameWorld>.Instance;
@@ -51,6 +59,8 @@ namespace SPTMap.Utils
 
             _questItems?.Clear();
             _questItems = null;
+
+            _warnedMissingZoneIds.Clear();
         }
 
         internal static IEnumerable<MapMarker> GetMarkersForPlayer(Player player)
@@ -189,7 +199,7 @@ namespace SPTMap.Utils
                 yield return zone.transform.position;
             }
 
-            if (!any)
+            if (!any && _warnedMissingZoneIds.Add(zoneId))
             {
                 var knownIds = _triggersWithIds == null ? "(null)" : string.Join(", ", _triggersWithIds.Select(t => t.Id));
                 Plugin.Log.LogWarning($"QuestUtils: no TriggerWithId found for zoneId '{zoneId}'. Known ids ({_triggersWithIds?.Count}): {knownIds}");

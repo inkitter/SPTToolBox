@@ -121,3 +121,96 @@ Not ported: `patch_tplprofile`'s other commented sections (`unlockedProductionRe
 `patch_profile` (the live-save health editor, distinct from the template health file already
 ported) - these weren't reviewed in this pass; same "verify the id against the live DB first"
 treatment should happen before porting them too, ask if you want that done next.
+
+## 8. "Give Item" - F9 panel button that mails an item into the live profile
+
+`Routing/GiveItemRouter.cs` + `Routing/GiveItemCatalog.cs` on the server, `Plugin/Utils/
+DbPostPatcherClient.cs` + the "Give Item" section in `Plugin/Utils/QuestDebugPanel.cs` on the
+client. Lets you spawn one of a fixed set of hideout-slot items (same catalog as
+`unheard-usec-hideout-containers.json`, #6 above) into your *current, already-running* profile
+without a server restart or relog - useful when you didn't enable that static injection before
+character creation, or just want the container without touching the profile template at all.
+
+### Why mail, not a direct inventory splice
+
+First approach considered: reach into the client's live inventory and drop the item straight in,
+the way a "give item" console command works in a lot of games. Investigated via `ilspycmd`
+against `BepInEx/interop/Assembly-CSharp.dll` (an IL2CPP interop *stub* - method signatures are
+real, bodies are native trampolines, so this only gets you the type surface, never behavior) and
+found `EFT.ItemFactory.CreateItem`/`CreateManyItems` exist, but never found a live, safely-
+reachable instance to call them on, nor confirmed which native call actually places a received
+item into the stash/sorting-table UI live (the community-known `InteractionsHandlerClass` isn't
+present under that name in this build - renamed/obfuscated). IL2CPP native method bodies aren't
+recoverable by decompiling further, either - there's no IL to decompile, it's compiled to native
+code, so this dead-ended at "would need live Harmony tracing in an actual raid to find the real
+call chain," which wasn't in scope for this pass.
+
+Pivoted to mail instead: `MailSendService.SendSystemMessageToPlayer(sessionId, message, items)`
+in server-csharp is what quest rewards / insurance returns / trader "offer sold" notifications
+already use, and its last step (`notificationSendHelper.SendMessageAsync`) pushes a live
+notification over the same channel the client is already listening on for those - so mailing an
+item gets the "shows up immediately, no relog" behavior for free, using only fully-documented,
+non-obfuscated server code. The client side only ever needs a session id and a base URL, both
+plain strings - no client-side IL2CPP inventory manipulation at all.
+
+### Session id / backend URL, and getting them without touching IL2CPP objects
+
+First attempt read these off `EFT.UI.ItemUiContext.Instance.Session` cast to `ClientBackendSession`
+(`Backend.PhpSessionId`) - `PhpSessionId` genuinely is a real, safe, top-level public property, but
+the presumed `Backend.url` property was a **misread**: it's actually a captured local variable
+inside the compiler-generated state machine for `Backend.KeepAliveCoroutine`, which just happens
+to also be named `url` - `ilspycmd`'s flat text output doesn't make nesting depth obvious at a
+glance, and grepping "string url" anywhere in the dump found that nested one, not a real session
+field (there isn't one on `Backend`).
+
+Replaced with something much simpler and fully outside IL2CPP entirely: the SPT launcher passes
+`-token=<sessionId>` and `-config={"BackendUrl":"...",...}` on the game's own command line - both
+visible verbatim in `BepInEx/LogOutput.log` at startup ("key:token value:...", "key:config
+value:{'BackendUrl':'https://127.0.0.1:6969',...}"). `Environment.GetCommandLineArgs()` is a
+plain managed .NET API, zero native/IL2CPP risk, and it's authoritative for *this* running game
+instance by construction (it's what the game itself was actually launched with).
+
+### The response body is always zlib-compressed, and optionally also byte-shuffled
+
+Every response coming back from any SPT server route - not just custom mod routes - is
+zlib-deflate compressed (`SptHttpListener.WriteFrameAsync`: always wraps the JSON in a
+`ZLibStream` before anything else). On top of that, `RequestEncryptionUtil.ShuffleInPlace`
+applies a second, reproducible byte-permutation pass (not real cryptography - a deterministic
+formula, matching what live Tarkov's own wire protocol does) to *most* paths -
+`SptHttpListener.ShouldShuffleResponse` exempts responses under `/singleplayer/...`, and
+`ShouldShuffleRequest` separately exempts `/launcher`, `/client/metadata`, `/v2/shop`, `/files`
+(request bodies, not response bodies - see below).
+
+Debugging this from the client side without realizing any of this produced a confusing trail:
+raw response bytes looked like noise, and treating them as UTF-8 text and feeding them to
+`JsonSerializer.Deserialize<T>(string)` produced misleading errors like `'0xEF' is an invalid
+start of a value` or `'0x00' is an invalid start of a value` - those are just the first raw
+compressed/shuffled bytes happening to *also* be invalid JSON starts, not a real parsing bug, a
+TLS problem, or a BOM (an actual early theory that also turned out wrong once the real cause was
+found - though BOM-stripping was kept anyway since decompressed bodies can still carry one).
+Confirmed the real cause by manually `zlib.decompressobj(15).decompress(...)` -ing a captured
+response in Python and getting the exact expected JSON back. Fixed on the client with
+`System.IO.Compression.ZLibStream` (added in .NET 6, matches `Plugin.csproj`'s target) wrapping
+the raw response bytes before reading them as text - see `DbPostPatcherClient.ReadBodyAsync`.
+
+**This matters for any *new* custom route, not just this one**: any response body needs
+`ZLibStream` decompression regardless of path. `/singleplayer/...` only gets you out of the
+*shuffle* layer, not the compression layer.
+
+The GET-with-path-segment shape of `/singleplayer/dbpostpatcher/give-item/{itemTemplateId}` (one
+static route registered per catalog entry, rather than a single route parsing an id out of a
+POST body) exists because `ShouldShuffleRequest` does **not** exempt `/singleplayer/...` - only
+`ShouldShuffleResponse` does. A POST body sent to a `/singleplayer/...` route still gets run
+through `RequestEncryptionUtil.DeShuffleAsync` server-side as if it arrived shuffled, which would
+silently corrupt (or, once past a 4-byte minimum, throw on an "impossible length" check) any
+plain unshuffled JSON body sent from a hand-rolled `HttpClient` request. Since `GiveItemCatalog`
+is small and fixed, one exact-match route per entry sidesteps needing to solve "how do I send an
+unshuffled request body" for a single string at all.
+
+### Verifying this without running the game
+
+All of the above was confirmed by starting `SPT.Server.exe` locally and hitting the new routes
+directly with `curl -k` (self-signed cert) plus manual Python zlib decompression of the captured
+bytes - no game client involved. That's a generally useful technique for anything server-route-
+shaped in this project going forward: you don't need the game running to verify a DbPostPatcher
+HTTP route actually works, `curl`/`Invoke-WebRequest` + zlib-decompressing the body is enough.

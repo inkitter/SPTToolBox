@@ -70,5 +70,11 @@
       DestinationFolder="$(ModDeployDir)"
       Condition="Exists('patches.enabled.json') And !Exists('$(ModDeployDir)\patches.enabled.json')"
     />
+    <!-- Same seed-only treatment: don't clobber a user's edited give-item-catalog.json on rebuild. -->
+    <Copy
+      SourceFiles="give-item-catalog.json"
+      DestinationFolder="$(ModDeployDir)"
+      Condition="Exists('give-item-catalog.json') And !Exists('$(ModDeployDir)\give-item-catalog.json')"
+    />
   </Target>
 </Project>

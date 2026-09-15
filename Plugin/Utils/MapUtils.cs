@@ -14,6 +14,7 @@ namespace SPTMap.Utils
         // commonly used elsewhere) - match case-insensitively.
         private static readonly Dictionary<string, MapDef> Defs = new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Texture2D> Textures = new();
+        private static readonly HashSet<string> WarnedMissingNames = new(StringComparer.OrdinalIgnoreCase);
         private static bool _scanned;
 
         // internalName (e.g. "factory4_day") -> loaded def+texture, or null if none found/loadable
@@ -26,7 +27,13 @@ namespace SPTMap.Utils
 
             if (!Defs.TryGetValue(internalName, out var def))
             {
-                Plugin.Log.LogWarning($"No map def for '{internalName}'. Known: [{string.Join(", ", Defs.Keys)}]");
+                // Called every OnGUI frame while a raid is on a location we don't have (or don't yet
+                // have) an alias for - logging unconditionally floods the log for the whole raid.
+                // Once per distinct missing name is enough to catch and fix it.
+                if (WarnedMissingNames.Add(internalName))
+                {
+                    Plugin.Log.LogWarning($"No map def for '{internalName}'. Known: [{string.Join(", ", Defs.Keys)}]");
+                }
                 return (null, null);
             }
 

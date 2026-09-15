@@ -22,7 +22,7 @@ Map source data (SVGs, per-floor bounds) is fetched from [tarkov.dev](https://ta
 - Multi-floor support with automatic floor detection based on player position
 - Player position/facing marker, zoom, and pan-follow
 - Dynamic markers: extracts (with status), secret extracts, transit points, other players, corpses, quest objectives (including quest items), locked doors, BTR, airdrops, wishlist items on the ground, hidden stash caches, the player's own dropped backpack
-- **`F9`** opens a debug panel with: an instant-finish button per quest (calls the same engine entry point the native "Complete quest" button uses, so rewards/chain unlocks fire for real), and Prestige tools (open the native Prestige screen and trigger its "Obtain" flow directly, bypassing the level/mode gate without needing it satisfied for real). Ships enabled by default — see `Plugin/Utils/QuestDebugPanel.cs`.
+- **`F9`** opens a debug panel with: an instant-finish button per quest (calls the same engine entry point the native "Complete quest" button uses, so rewards/chain unlocks fire for real), Prestige tools (open the native Prestige screen and trigger its "Obtain" flow directly, bypassing the level/mode gate without needing it satisfied for real), and a Give Item section that mails a hideout-slot item (THICC case, SICC pouch, repair kits, etc.) into your current profile via [DbPostPatcher](#dbpostpatcher) — shows a clear "backend not detected" message if that mod isn't deployed on the server you're connected to, rather than failing silently. Ships enabled by default — see `Plugin/Utils/QuestDebugPanel.cs` and `Plugin/Utils/DbPostPatcherClient.cs`.
 
 ### Compatibility
 
@@ -63,10 +63,17 @@ record of what changed or why.
   always a complete, up-to-date menu of what can be turned on.
 - A failure on any single patch operation (missing field, unknown id, bad path) is logged and
   only that operation is skipped - never crashes the server, never blocks other patches.
+- Also exposes a couple of custom HTTP routes under `/singleplayer/dbpostpatcher/...` (ping,
+  catalog, give-item) that back SPTMap's F9 "Give Item" panel - mails a hideout-slot item into
+  the live profile immediately, no server restart needed. See
+  [`Routing/GiveItemRouter.cs`](Server/DbPostPatcher/Routing/GiveItemRouter.cs).
 
-See [`Server/DbPostPatcher/NOTES.md`](Server/DbPostPatcher/NOTES.md) for the design rationale
-and a log of real issues this caught (missing required fields, fields that didn't exist where
-expected) while porting an earlier ad-hoc TypeScript patch script to this format.
+See [`Server/DbPostPatcher/NOTES.md`](Server/DbPostPatcher/NOTES.md) for the design rationale;
+a log of real issues this caught (missing required fields, fields that didn't exist where
+expected) while porting an earlier ad-hoc TypeScript patch script to this format; and, if you're
+writing a new custom route, a write-up of two non-obvious things every SPT server response
+requires (always zlib-deflate compressed, and shuffled/permuted unless under `/singleplayer/...`)
+that cost real time to track down.
 
 ### Installation
 

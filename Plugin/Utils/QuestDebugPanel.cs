@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using EFT.Quests;
 using EFT.UI;
 using UnityEngine;
@@ -21,8 +22,10 @@ namespace SPTMap.Utils
     {
         private const KeyCode ToggleKey = KeyCode.F9;
         private static readonly string[] TabLabels = { "Incomplete", "Not started", "Completed" };
+        private static readonly string[] PageLabels = { "Quest", "Item", "Prestige", "Character" };
 
         private static bool _visible;
+        private static int _page;
         private static int _tab;
         private static Vector2 _scroll;
         private static GUIStyle _headerStyle;
@@ -41,6 +44,62 @@ namespace SPTMap.Utils
         };
 
         private static string _giveItemResult = "";
+
+        // GiveItemAsync's onResult callback fires off the main thread (see its own comment) and
+        // writes straight into _giveItemResult. Unity calls OnGUI multiple times per frame (Layout,
+        // then Repaint) and expects the exact same sequence of GUILayout calls on every pass of a
+        // given frame - if that callback (or a DbPostPatcherClient background update) lands between
+        // the Layout and Repaint pass, whether the trailing result Label/an item row gets drawn can
+        // flip mid-frame, and Unity throws "Mismatched LayoutGroup.repaint". Freezing one snapshot of
+        // every value DrawGiveItemSection reads, refreshed only once per Unity frame (frameCount),
+        // guarantees every pass of a frame sees identical data regardless of when a background
+        // continuation happens to land.
+        private static int _giveItemSnapshotFrame = -1;
+        private static bool? _giveItemSnapshotBackendAvailable;
+        private static string _giveItemSnapshotLastStatus = "";
+        private static DbPostPatcherClient.CatalogEntry[] _giveItemSnapshotCatalog = Array.Empty<DbPostPatcherClient.CatalogEntry>();
+        private static string _giveItemSnapshotResult = "";
+
+        // Character tab - writes back to the live server profile via CharacterDebugRouter, see its
+        // own header comment (Server/DbPostPatcher/Routing/CharacterDebugRouter.cs) for the route
+        // shapes. Every row here is a fixed, unconditional set of controls (never a foreach over
+        // fetched/variable-length data, never an "if got data yet" branch around a control) -
+        // learned from the give-item mismatched-layout bug above: only the *text content* of a
+        // Label/TextField is allowed to change out from under an async callback, never whether a
+        // control exists at all, since that's what Unity's Layout/Repaint pass comparison trips on.
+        private static readonly string[] BodyPartNames = { "Head", "Chest", "Stomach", "LeftArm", "RightArm", "LeftLeg", "RightLeg" };
+        private static readonly string[] VitalNames = { "hydration", "energy", "temperature" };
+        private static readonly Dictionary<string, string> _bodyPartDisplay = new();
+        private static readonly Dictionary<string, string> _bodyPartInput = new();
+        private static readonly Dictionary<string, string> _vitalDisplay = new();
+        private static readonly Dictionary<string, string> _vitalInput = new();
+        // Mirrors SPTarkov.Server.Core.Models.Enums.SkillTypes (server-csharp) in enum declaration
+        // order - CharacterDebugRouter's set-skill route validates against that same enum name, so
+        // this list must be kept in sync by hand if that enum ever changes. A fixed compile-time
+        // array (not the variable-length list of skills the server returns, which only carries
+        // entries the profile has already touched) so every skill is always pickable, not just ones
+        // already progressed, and so the row count here never varies between OnGUI passes.
+        private static readonly string[] AllSkillNames =
+        {
+            "Endurance", "Strength", "Vitality", "Health", "StressResistance", "Metabolism",
+            "Immunity", "Perception", "Intellect", "Attention", "Charisma", "Memory",
+            "MagDrills", "Pistol", "Revolver", "SMG", "Assault", "Shotgun", "Sniper", "LMG", "HMG",
+            "Launcher", "AttachedLauncher", "Throwing", "Misc", "Melee", "DMR",
+            "DrawMaster", "AimMaster", "RecoilControl", "TroubleShooting", "Sniping",
+            "CovertMovement", "ProneMovement",
+            "FirstAid", "FieldMedicine", "Surgery",
+            "LightVests", "HeavyVests", "WeaponModding", "AdvancedModding",
+            "NightOps", "SilentOps", "Lockpicking", "Search", "WeaponTreatment",
+            "Freetrading", "Auctions", "Cleanoperations", "Barter", "Shadowconnections", "Taskperformance",
+            "BearAssaultoperations", "BearAuthority", "BearAksystems", "BearHeavycaliber", "BearRawpower",
+            "UsecArsystems", "UsecDeepweaponmodding", "UsecLongrangeoptics", "UsecNegotiations", "UsecTactics",
+            "BotReload", "BotSound", "AimDrills", "HideoutManagement", "Crafting",
+        };
+        private static readonly Dictionary<string, string> _skillDisplay = new();
+        private static readonly Dictionary<string, string> _skillInput = new();
+        private static Vector2 _skillScroll;
+        private static string _characterStatus = "";
+        private static bool _characterLoadedOnce;
 
         public static void HandleInput()
         {
@@ -71,20 +130,54 @@ namespace SPTMap.Utils
             GUI.Box(rect, GUIContent.none);
             GUILayout.BeginArea(rect);
 
-            GUILayout.Label("Quest Debug Panel  (F9 to close)", HeaderStyle);
+            GUILayout.Label("Debug Panel  (F9 to close)", HeaderStyle);
 
-            DrawPrestigeSection();
+            // Plain buttons, not GUILayout.Toolbar/SelectionGrid - those hit the same IL2CPP
+            // generic-method-unstripping crash this project otherwise avoids entirely (see CLAUDE.md).
+            GUILayout.BeginHorizontal();
+            for (var i = 0; i < PageLabels.Length; i++)
+            {
+                var prevPageColor = GUI.color;
+                GUI.color = _page == i ? Color.white : new Color(0.6f, 0.6f, 0.6f);
+                if (GUILayout.Button(PageLabels[i]))
+                {
+                    _page = i;
+                    if (i == 3 && !_characterLoadedOnce)
+                    {
+                        RefreshCharacterState();
+                    }
+                }
+                GUI.color = prevPageColor;
+            }
+            GUILayout.EndHorizontal();
             GUILayout.Space(6f);
 
-            DrawGiveItemSection();
-            GUILayout.Space(6f);
+            switch (_page)
+            {
+                case 1:
+                    DrawGiveItemSection();
+                    break;
+                case 2:
+                    DrawPrestigeSection();
+                    break;
+                case 3:
+                    DrawCharacterSection();
+                    break;
+                default:
+                    DrawQuestPage();
+                    break;
+            }
 
+            GUILayout.EndArea();
+        }
+
+        private static void DrawQuestPage()
+        {
             var questController = ItemUiContext.Instance?.QuestController;
             var quests = questController?.Quests?.List;
             if (questController == null || quests == null)
             {
                 GUILayout.Label("No quest data available yet (still loading into a profile?)");
-                GUILayout.EndArea();
                 return;
             }
 
@@ -203,7 +296,6 @@ namespace SPTMap.Utils
             DrawSection(mainOnly: false, tab: _tab);
 
             GUILayout.EndScrollView();
-            GUILayout.EndArea();
         }
 
         // Doesn't touch profile data or call the prestige request itself - calls
@@ -227,6 +319,160 @@ namespace SPTMap.Utils
             GUILayout.EndHorizontal();
         }
 
+        // Writes body-part max HP / hydration / energy / temperature / skill progress back to the
+        // live server profile (Server/DbPostPatcher/Routing/CharacterDebugRouter.cs), persisted via
+        // SaveServer.SaveProfileAsync - so it survives a relog, not just the current raid. A raid
+        // already in progress keeps its own live health snapshot and pushes it back to the profile
+        // at raid end, which would overwrite these edits - apply them from the main menu, or expect
+        // to see them from the *next* raid rather than the current one.
+        private static void ApplyCharacterState(DbPostPatcherClient.CharacterState state)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
+            if (state.BodyParts != null)
+            {
+                foreach (var part in BodyPartNames)
+                {
+                    if (state.BodyParts.TryGetValue(part, out var vital) && vital != null)
+                    {
+                        _bodyPartDisplay[part] = $"{vital.Current:0.#} / {vital.Maximum:0.#}";
+                        _bodyPartInput[part] = vital.Maximum.ToString("0.#");
+                    }
+                }
+            }
+
+            void ApplyVital(string name, DbPostPatcherClient.VitalState vital)
+            {
+                if (vital == null)
+                {
+                    return;
+                }
+                _vitalDisplay[name] = $"{vital.Current:0.#} / {vital.Maximum:0.#}";
+                _vitalInput[name] = vital.Maximum.ToString("0.#");
+            }
+
+            ApplyVital("hydration", state.Hydration);
+            ApplyVital("energy", state.Energy);
+            ApplyVital("temperature", state.Temperature);
+
+            if (state.Skills != null)
+            {
+                foreach (var skill in state.Skills)
+                {
+                    if (skill?.Id == null)
+                    {
+                        continue;
+                    }
+                    _skillDisplay[skill.Id] = skill.Progress.ToString("0.#");
+                    _skillInput[skill.Id] = skill.Progress.ToString("0.#");
+                }
+            }
+        }
+
+        private static void RefreshCharacterState()
+        {
+            _characterLoadedOnce = true;
+            _characterStatus = "Loading...";
+            DbPostPatcherClient.FetchCharacterStateAsync((state, status) =>
+            {
+                _characterStatus = state != null ? "Loaded current profile values." : status;
+                ApplyCharacterState(state);
+            });
+        }
+
+        private static void DrawCharacterSection()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Character (writes back to your server profile - see status line below)", HeaderStyle);
+
+            if (GUILayout.Button("Refresh from server", GUILayout.Width(160f)))
+            {
+                RefreshCharacterState();
+            }
+
+            GUILayout.Space(4f);
+            GUILayout.Label("Body part max HP", HeaderStyle);
+            foreach (var part in BodyPartNames)
+            {
+                _bodyPartDisplay.TryAdd(part, "?");
+                _bodyPartInput.TryAdd(part, "");
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(part, GUILayout.Width(80f));
+                GUILayout.Label(_bodyPartDisplay[part], DescriptionStyle, GUILayout.Width(90f));
+                _bodyPartInput[part] = GUILayout.TextField(_bodyPartInput[part], GUILayout.Width(70f));
+                if (GUILayout.Button("Set", GUILayout.Width(50f))
+                    && double.TryParse(_bodyPartInput[part], out var value))
+                {
+                    _characterStatus = $"Setting {part}...";
+                    DbPostPatcherClient.SetBodyPartAsync(part, value, (state, status) =>
+                    {
+                        _characterStatus = state != null ? $"{part} max HP set to {value:0.#}." : status;
+                        ApplyCharacterState(state);
+                    });
+                }
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(4f);
+            GUILayout.Label("Vitals", HeaderStyle);
+            foreach (var vitalName in VitalNames)
+            {
+                _vitalDisplay.TryAdd(vitalName, "?");
+                _vitalInput.TryAdd(vitalName, "");
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(vitalName, GUILayout.Width(80f));
+                GUILayout.Label(_vitalDisplay[vitalName], DescriptionStyle, GUILayout.Width(90f));
+                _vitalInput[vitalName] = GUILayout.TextField(_vitalInput[vitalName], GUILayout.Width(70f));
+                if (GUILayout.Button("Set", GUILayout.Width(50f))
+                    && double.TryParse(_vitalInput[vitalName], out var value))
+                {
+                    _characterStatus = $"Setting {vitalName}...";
+                    DbPostPatcherClient.SetVitalAsync(vitalName, value, (state, status) =>
+                    {
+                        _characterStatus = state != null ? $"{vitalName} max set to {value:0.#}." : status;
+                        ApplyCharacterState(state);
+                    });
+                }
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(4f);
+            GUILayout.Label("Skills (progress, 0-5100 - level is roughly progress / 100)", HeaderStyle);
+            _skillScroll = GUILayout.BeginScrollView(_skillScroll, GUI.skin.box, GUILayout.Height(180f));
+            foreach (var skillId in AllSkillNames)
+            {
+                _skillDisplay.TryAdd(skillId, "?");
+                _skillInput.TryAdd(skillId, "");
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(skillId, GUILayout.Width(150f));
+                GUILayout.Label(_skillDisplay[skillId], DescriptionStyle, GUILayout.Width(60f));
+                _skillInput[skillId] = GUILayout.TextField(_skillInput[skillId], GUILayout.Width(70f));
+                if (GUILayout.Button("Set", GUILayout.Width(50f))
+                    && double.TryParse(_skillInput[skillId], out var progress))
+                {
+                    _characterStatus = $"Setting skill '{skillId}'...";
+                    DbPostPatcherClient.SetSkillAsync(skillId, progress, (state, status) =>
+                    {
+                        _characterStatus = state != null ? $"Skill '{skillId}' progress set to {progress:0.#}." : status;
+                        ApplyCharacterState(state);
+                    });
+                }
+                GUILayout.EndHorizontal();
+            }
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(4f);
+            GUILayout.Label(_characterStatus, DescriptionStyle);
+
+            GUILayout.EndVertical();
+        }
+
         // Delivers the picked item as an in-game mailed attachment (DbPostPatcher's
         // /dbpostpatcher/give-item route + MailSendService) rather than trying to splice it
         // straight into the live inventory - see DbPostPatcherClient's header comment for why.
@@ -234,10 +480,22 @@ namespace SPTMap.Utils
         // (fired from HandleInput on panel open), so there's a brief "checking..." state.
         private static void DrawGiveItemSection()
         {
+            // Refresh the snapshot at most once per Unity frame - see the fields' comment above for
+            // why a mid-frame refresh (between this frame's Layout and Repaint OnGUI passes) would
+            // reintroduce the mismatched-layout crash.
+            if (_giveItemSnapshotFrame != Time.frameCount)
+            {
+                _giveItemSnapshotFrame = Time.frameCount;
+                _giveItemSnapshotBackendAvailable = DbPostPatcherClient.BackendAvailable;
+                _giveItemSnapshotLastStatus = DbPostPatcherClient.LastStatus;
+                _giveItemSnapshotCatalog = DbPostPatcherClient.Catalog;
+                _giveItemSnapshotResult = _giveItemResult;
+            }
+
             GUILayout.BeginVertical(GUI.skin.box);
             GUILayout.Label("Give Item (via DbPostPatcher mail route)", HeaderStyle);
 
-            switch (DbPostPatcherClient.BackendAvailable)
+            switch (_giveItemSnapshotBackendAvailable)
             {
                 case null:
                     GUILayout.Label("Checking backend...");
@@ -245,15 +503,16 @@ namespace SPTMap.Utils
                 case false:
                     GUILayout.Label(
                         "DbPostPatcher not detected on this backend - Give Item is unavailable. "
-                        + (string.IsNullOrEmpty(DbPostPatcherClient.LastStatus) ? "" : DbPostPatcherClient.LastStatus),
+                        + (string.IsNullOrEmpty(_giveItemSnapshotLastStatus) ? "" : _giveItemSnapshotLastStatus),
                         DescriptionStyle);
                     break;
                 case true:
-                    if (DbPostPatcherClient.Catalog.Length == 0)
+                    var catalog = _giveItemSnapshotCatalog;
+                    if (catalog.Length == 0)
                     {
                         GUILayout.Label("Backend detected, but its item catalog is empty.");
                     }
-                    foreach (var entry in DbPostPatcherClient.Catalog)
+                    foreach (var entry in catalog)
                     {
                         GUILayout.BeginHorizontal();
                         GUILayout.Label(entry.Label);
@@ -269,9 +528,9 @@ namespace SPTMap.Utils
                     break;
             }
 
-            if (!string.IsNullOrEmpty(_giveItemResult))
+            if (!string.IsNullOrEmpty(_giveItemSnapshotResult))
             {
-                GUILayout.Label(_giveItemResult, DescriptionStyle);
+                GUILayout.Label(_giveItemSnapshotResult, DescriptionStyle);
             }
 
             GUILayout.EndVertical();
