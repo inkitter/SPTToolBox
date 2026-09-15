@@ -40,11 +40,20 @@ namespace SPTMap.Utils
             normal = { textColor = new Color(0.75f, 0.75f, 0.75f) },
         };
 
+        private static string _giveItemResult = "";
+
         public static void HandleInput()
         {
             if (Input.GetKeyDown(ToggleKey))
             {
                 _visible = !_visible;
+                if (_visible)
+                {
+                    // Re-check on every open, not every frame - a ping is a real network round
+                    // trip, and the panel may be opened against a different backend than last time.
+                    DbPostPatcherClient.CheckBackendAsync();
+                    _giveItemResult = "";
+                }
             }
         }
 
@@ -65,6 +74,9 @@ namespace SPTMap.Utils
             GUILayout.Label("Quest Debug Panel  (F9 to close)", HeaderStyle);
 
             DrawPrestigeSection();
+            GUILayout.Space(6f);
+
+            DrawGiveItemSection();
             GUILayout.Space(6f);
 
             var questController = ItemUiContext.Instance?.QuestController;
@@ -213,6 +225,56 @@ namespace SPTMap.Utils
                 PrestigeDebugPatches.ClickObtainPrestige();
             }
             GUILayout.EndHorizontal();
+        }
+
+        // Delivers the picked item as an in-game mailed attachment (DbPostPatcher's
+        // /dbpostpatcher/give-item route + MailSendService) rather than trying to splice it
+        // straight into the live inventory - see DbPostPatcherClient's header comment for why.
+        // DbPostPatcherClient.BackendAvailable is null until the first ping response lands
+        // (fired from HandleInput on panel open), so there's a brief "checking..." state.
+        private static void DrawGiveItemSection()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Give Item (via DbPostPatcher mail route)", HeaderStyle);
+
+            switch (DbPostPatcherClient.BackendAvailable)
+            {
+                case null:
+                    GUILayout.Label("Checking backend...");
+                    break;
+                case false:
+                    GUILayout.Label(
+                        "DbPostPatcher not detected on this backend - Give Item is unavailable. "
+                        + (string.IsNullOrEmpty(DbPostPatcherClient.LastStatus) ? "" : DbPostPatcherClient.LastStatus),
+                        DescriptionStyle);
+                    break;
+                case true:
+                    if (DbPostPatcherClient.Catalog.Length == 0)
+                    {
+                        GUILayout.Label("Backend detected, but its item catalog is empty.");
+                    }
+                    foreach (var entry in DbPostPatcherClient.Catalog)
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(entry.Label);
+                        GUILayout.FlexibleSpace();
+                        if (GUILayout.Button("Add", GUILayout.Width(60f)))
+                        {
+                            var label = entry.Label;
+                            _giveItemResult = $"Sending '{label}'...";
+                            DbPostPatcherClient.GiveItemAsync(entry.ItemTemplateId, label, result => _giveItemResult = result);
+                        }
+                        GUILayout.EndHorizontal();
+                    }
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(_giveItemResult))
+            {
+                GUILayout.Label(_giveItemResult, DescriptionStyle);
+            }
+
+            GUILayout.EndVertical();
         }
 
         private static void TryFinish(QuestController questController, Quest quest)
