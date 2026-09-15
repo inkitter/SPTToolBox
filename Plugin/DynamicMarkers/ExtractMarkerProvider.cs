@@ -86,7 +86,8 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
-            var pos = MathUtils.ConvertToMapPosition(extract.transform.position);
+            var worldPos = extract.transform.position;
+            var pos = MathUtils.ConvertToMapPosition(worldPos);
             var marker = new MapMarker
             {
                 Category = Category,
@@ -94,6 +95,7 @@ namespace SPTMap.DynamicMarkers
                 Text = extract.Settings.Name.BSGLocalized(),
                 ShowLabel = true,
                 GetPosition = () => pos,
+                GetWorldPosition = () => worldPos,
             };
 
             _markers[extract] = marker;

@@ -64,6 +64,9 @@ namespace SPTMap.Utils
 
             GUILayout.Label("Quest Debug Panel  (F9 to close)", HeaderStyle);
 
+            DrawPrestigeSection();
+            GUILayout.Space(6f);
+
             var questController = ItemUiContext.Instance?.QuestController;
             var quests = questController?.Quests?.List;
             if (questController == null || quests == null)
@@ -104,7 +107,7 @@ namespace SPTMap.Utils
                     GUILayout.BeginVertical(GUI.skin.box);
 
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label($"[{quest.QuestStatus}] {quest.Name}");
+                    GUILayout.Label($"[{quest.QuestStatus}] {quest.Name} ({quest.Id})");
                     GUILayout.FlexibleSpace();
                     if (tab == 1)
                     {
@@ -128,15 +131,30 @@ namespace SPTMap.Utils
                         {
                             TryForceFinish(questController, quest);
                         }
+                        if (quest.QuestStatus == EQuestStatus.Started
+                            && GUILayout.Button("Conditions", GUILayout.Width(80f)))
+                        {
+                            TrySatisfyConditions(questController, quest);
+                        }
                     }
                     GUILayout.EndHorizontal();
 
                     // main-story quests all share the same title ("塔科夫之旅" etc covers every
-                    // step of that chain) - the description is the only thing on screen that tells
-                    // one step apart from the next, so it's shown for every quest, not just main.
+                    // step of that chain) - the id in the header line and the description are what
+                    // tell one step apart from the next, so both are shown for every quest, not just
+                    // main. Some quests have neither a name nor a description locale entry - the
+                    // locale table does still carry a string keyed by the AvailableForFinish
+                    // condition's own id (that's what the native "go do X" hand-in hint reads from),
+                    // so that's shown too whenever it differs from quest.Description, rather than
+                    // only as a fallback for a blank one.
                     if (!string.IsNullOrEmpty(quest.Description))
                     {
                         GUILayout.Label(quest.Description, DescriptionStyle);
+                    }
+                    var conditionHint = GetConditionHint(quest);
+                    if (!string.IsNullOrEmpty(conditionHint) && conditionHint != quest.Description)
+                    {
+                        GUILayout.Label(conditionHint, DescriptionStyle);
                     }
 
                     GUILayout.EndVertical();
@@ -174,6 +192,27 @@ namespace SPTMap.Utils
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        // Doesn't touch profile data or call the prestige request itself - calls
+        // InventoryScreen._prestigeScreen.Show directly (see PrestigeDebugPatches.ShowPrestigeScreen),
+        // the same call the native tab's own button click ends up making, so the item-transfer
+        // picker and confirmation dialog still run for real. Requires Inventory to be open already
+        // (needs a live InventoryScreen instance to read profile/controllers/session off of).
+        private static void DrawPrestigeSection()
+        {
+            GUILayout.BeginHorizontal(GUI.skin.box);
+            GUILayout.Label("Prestige: open Inventory first, then show the screen directly");
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Show Prestige Screen", GUILayout.Width(160f)))
+            {
+                PrestigeDebugPatches.ShowPrestigeScreen();
+            }
+            if (GUILayout.Button("Click Obtain Prestige", GUILayout.Width(160f)))
+            {
+                PrestigeDebugPatches.ClickObtainPrestige();
+            }
+            GUILayout.EndHorizontal();
         }
 
         private static void TryFinish(QuestController questController, Quest quest)
@@ -217,6 +256,42 @@ namespace SPTMap.Utils
             catch (Exception e)
             {
                 Plugin.Log.LogError($"QuestDebugPanel: TryInstantFinishQuest threw for '{quest?.Name}': {e}");
+            }
+        }
+
+        // For testing whether a quest's own native completion trigger (the in-raid zone/item/kill
+        // event, or the Tasks-screen "Complete quest" button) actually works - some SPT bugs live in
+        // that path itself, not in reaching AvailableForFinish, so TryFinish's auto-complete would
+        // paper over exactly the thing being tested. Only forces the hand-in conditions through
+        // CompleteConditionGeneric (same as TryFinish's first step) and stops - the quest is left at
+        // AvailableForFinish for the player to complete for real via the native UI.
+        private static void TrySatisfyConditions(QuestController questController, Quest quest)
+        {
+            try
+            {
+                if (quest.QuestStatus != EQuestStatus.Started)
+                {
+                    return;
+                }
+
+                ForceCompleteConditions(questController, quest);
+
+                if (quest.QuestStatus != EQuestStatus.AvailableForFinish)
+                {
+                    Plugin.Log.LogWarning(
+                        $"QuestDebugPanel: '{quest.Name}' ({quest.Id}) still not AvailableForFinish "
+                        + $"after forcing conditions (status: {quest.QuestStatus}) - likely a quest-data "
+                        + "issue (missing target item/zone), not fixable from here.");
+                    return;
+                }
+
+                Plugin.Log.LogInfo(
+                    $"QuestDebugPanel: conditions satisfied for '{quest.Name}' ({quest.Id}) - "
+                    + "complete it via the native Tasks UI to test the real completion trigger.");
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"QuestDebugPanel: satisfy-conditions threw for '{quest?.Name}': {e}");
             }
         }
 
@@ -274,17 +349,51 @@ namespace SPTMap.Utils
             }
         }
 
-        private static void ForceCompleteConditions(QuestController questController, Quest quest)
+        // condition.id doubles as a locale key for the hand-in hint text (e.g. "在立交桥、中心区、
+        // 森林或海关消灭 Scav") - clearer than an empty/missing quest.Description for quests whose
+        // locale entry only fills in the condition strings, not the quest name/description fields.
+        private static string GetConditionHint(Quest quest)
+        {
+            var conditions = GetAvailableForFinishConditions(quest);
+            if (conditions == null)
+            {
+                return null;
+            }
+
+            foreach (var condition in conditions)
+            {
+                var hint = condition?.id.ToString().BSGLocalized();
+                if (!string.IsNullOrEmpty(hint))
+                {
+                    return hint;
+                }
+            }
+
+            return null;
+        }
+
+        private static Il2CppSystem.Collections.Generic.List<Condition> GetAvailableForFinishConditions(Quest quest)
         {
             var conditionsByStatus = quest.Template?.Conditions;
             if (conditionsByStatus == null
                 || !conditionsByStatus.TryGetValue(EQuestStatus.AvailableForFinish, out var conditions)
                 || conditions?.List == null)
             {
+                return null;
+            }
+
+            return conditions.List;
+        }
+
+        private static void ForceCompleteConditions(QuestController questController, Quest quest)
+        {
+            var conditions = GetAvailableForFinishConditions(quest);
+            if (conditions == null)
+            {
                 return;
             }
 
-            foreach (var condition in conditions.List)
+            foreach (var condition in conditions)
             {
                 if (condition == null)
                 {

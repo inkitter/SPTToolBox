@@ -96,6 +96,7 @@ namespace SPTMap.Utils
                         ShowLabel = true,
                         Color = MarkerColor,
                         GetPosition = () => position,
+                        GetWorldPosition = () => worldPosition,
                     };
                 }
             }

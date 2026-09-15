@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using EFT;
 using SPTMap.Data;
@@ -91,6 +92,16 @@ namespace SPTMap
         private SecretMarkerProvider _secretMarkerProvider;
         private BTRMarkerProvider _btrMarkerProvider;
         private AirdropMarkerProvider _airdropMarkerProvider;
+        private WishlistMarkerProvider _wishlistMarkerProvider;
+        private HiddenStashMarkerProvider _hiddenStashMarkerProvider;
+        private BackpackMarkerProvider _backpackMarkerProvider;
+
+        // reused snapshot buffer for DrawMarkers - a provider can add/remove markers mid-frame
+        // (e.g. death during this same frame's event handling), so iterating MarkerManager.Markers
+        // directly would throw; copying into this List (Clear + AddRange reuses its backing array
+        // across frames once capacity settles) gets the same safety as the old
+        // MarkerManager.Markers.ToArray() without a fresh heap allocation every OnGUI call.
+        private readonly List<MapMarker> _markerDrawScratch = new();
         private bool _wasInRaid;
 
         private float _zoom = MinZoom;
@@ -182,10 +193,13 @@ namespace SPTMap
                 TryRetryQuestMarkers();
                 TryRetryTransitMarkers();
                 TryRetrySecretMarkers();
+                TryRetryHiddenStashMarkers();
                 TryTickQuestMarkers();
                 TryTickOtherPlayers();
                 TryTickBtrMarker();
                 TryTickAirdropMarkers();
+                TryTickWishlistMarkers();
+                TryTickBackpackMarkers();
             }
             _wasInRaid = inRaid;
 
@@ -317,6 +331,36 @@ namespace SPTMap
             {
                 Plugin.Log.LogError($"OnRaidStart airdrop marker setup exception: {e}");
             }
+
+            try
+            {
+                _wishlistMarkerProvider ??= new WishlistMarkerProvider();
+                _wishlistMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart wishlist marker setup exception: {e}");
+            }
+
+            try
+            {
+                _hiddenStashMarkerProvider ??= new HiddenStashMarkerProvider();
+                _hiddenStashMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart hidden stash marker setup exception: {e}");
+            }
+
+            try
+            {
+                _backpackMarkerProvider ??= new BackpackMarkerProvider();
+                _backpackMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart backpack marker setup exception: {e}");
+            }
         }
 
         private void TryRetryTransitMarkers()
@@ -343,6 +387,18 @@ namespace SPTMap
             }
         }
 
+        private void TryRetryHiddenStashMarkers()
+        {
+            try
+            {
+                _hiddenStashMarkerProvider?.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Hidden stash marker retry exception: {e}");
+            }
+        }
+
         private void TryTickBtrMarker()
         {
             try
@@ -364,6 +420,30 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"Airdrop marker refresh exception: {e}");
+            }
+        }
+
+        private void TryTickWishlistMarkers()
+        {
+            try
+            {
+                _wishlistMarkerProvider?.Tick(Time.deltaTime);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Wishlist marker refresh exception: {e}");
+            }
+        }
+
+        private void TryTickBackpackMarkers()
+        {
+            try
+            {
+                _backpackMarkerProvider?.Tick(Time.deltaTime);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Backpack marker refresh exception: {e}");
             }
         }
 
@@ -499,6 +579,33 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidEnd airdrop marker teardown exception: {e}");
+            }
+
+            try
+            {
+                _wishlistMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd wishlist marker teardown exception: {e}");
+            }
+
+            try
+            {
+                _hiddenStashMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd hidden stash marker teardown exception: {e}");
+            }
+
+            try
+            {
+                _backpackMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd backpack marker teardown exception: {e}");
             }
 
             MarkerManager.Clear();
@@ -909,7 +1016,9 @@ namespace SPTMap
 
             // copy first - providers can add/remove markers (e.g. death during this same frame's
             // event handling) and mutating List<T> while foreach-ing it throws.
-            foreach (var marker in MarkerManager.Markers.ToArray())
+            _markerDrawScratch.Clear();
+            _markerDrawScratch.AddRange(MarkerManager.Markers);
+            foreach (var marker in _markerDrawScratch)
             {
                 try
                 {

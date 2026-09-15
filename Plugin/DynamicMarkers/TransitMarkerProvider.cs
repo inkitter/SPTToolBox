@@ -67,7 +67,8 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
-            var pos = MathUtils.ConvertToMapPosition(point.transform.position);
+            var worldPos = point.transform.position;
+            var pos = MathUtils.ConvertToMapPosition(worldPos);
             var marker = new MapMarker
             {
                 Category = Category,
@@ -75,6 +76,7 @@ namespace SPTMap.DynamicMarkers
                 Text = point.Description.BSGLocalized(),
                 ShowLabel = true,
                 GetPosition = () => pos,
+                GetWorldPosition = () => worldPos,
                 GetColor = () => point.Enabled && point.IsActive ? UsableColor : UnusableColor,
             };
 

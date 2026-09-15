@@ -57,6 +57,7 @@ namespace SPTMap
             // itself. Patching each type by name individually avoids whatever that interaction was.
             var harmony = new Harmony("com.sptmap.plugin");
             harmony.PatchAll(typeof(CommonUIAwakePatch));
+            Utils.PrestigeDebugPatches.Enable(harmony);
 
             Log.LogInfo("SPTMap loaded (stage 2: player tracking + zoom)");
         }

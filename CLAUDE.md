@@ -99,15 +99,22 @@ Each `MapDef` has a `Levels` list (empty = single-level, old behavior). Each lev
 
 ### Markers
 
-`MarkerManager.cs` holds a flat `List<MapMarker>`. Providers (`ExtractMarkerProvider`, `SecretMarkerProvider`, `TransitMarkerProvider`, `DoorMarkerProvider`, `OtherPlayersMarkerProvider` (also covers corpses), `QuestMarkerProvider`, `BTRMarkerProvider`, `AirdropMarkerProvider`) add/remove entries. `SPTMapController.DrawMarkers` iterates every `OnGUI`, each draw wrapped in its own `try/catch` so one bad marker can't blank the map. Marker positions are raw pre-rotation world space — `DrawMarkers` applies `CoordinateRotation` the same way the player marker does.
+`MarkerManager.cs` holds a flat `List<MapMarker>`. Providers (`ExtractMarkerProvider`, `SecretMarkerProvider`, `TransitMarkerProvider`, `DoorMarkerProvider`, `OtherPlayersMarkerProvider` (also covers corpses), `QuestMarkerProvider`, `BTRMarkerProvider`, `AirdropMarkerProvider`, `WishlistMarkerProvider`, `HiddenStashMarkerProvider`, `BackpackMarkerProvider`) add/remove entries. `SPTMapController.DrawMarkers` iterates every `OnGUI`, each draw wrapped in its own `try/catch` so one bad marker can't blank the map. Marker positions are raw pre-rotation world space — `DrawMarkers` applies `CoordinateRotation` the same way the player marker does.
 
-All providers are patch-free by design: extracts/secrets/transit/doors resolve their source lists straight off engine controllers (`ExfiltrationController`, `TransitController`) or a scene scan (`Object.FindObjectsOfType<Door>()`) at `OnRaidStart`, retried each frame until populated; BTR and airdrops poll a live `Tick()` each frame/on a short timer instead (`GameUtils.GetBTRView()`, `Object.FindObjectsOfType<AirdropSynchronizableObject>()`) since those can appear/disappear mid-raid. `AirdropMarkerProvider`'s live rescan is a deliberate departure from the predecessor project, which relied on a Harmony patch on `ClientAirDrop.CloseParachute` (only fires once a crate has already landed) — the rescan approach should also surface a crate while it's still under its parachute, but this hasn't been confirmed in-game yet.
+All providers are patch-free by design: extracts/secrets/transit/doors resolve their source lists straight off engine controllers (`ExfiltrationController`, `TransitController`) or a scene scan (`Object.FindObjectsOfType<Door>()`/`Object.FindObjectsOfType<LootableContainer>()`) at `OnRaidStart`, retried each frame until populated; BTR/airdrops/wishlist/backpack poll a live `Tick()` each frame/on a short timer instead (`GameUtils.GetBTRView()`, `Object.FindObjectsOfType<AirdropSynchronizableObject>()`, `GameWorld.LootList`) since those can appear/disappear/get-picked-up mid-raid. `AirdropMarkerProvider`'s live rescan is a deliberate departure from the predecessor project, which relied on a Harmony patch on `ClientAirDrop.CloseParachute` (only fires once a crate has already landed) — the rescan approach should also surface a crate while it's still under its parachute, but this hasn't been confirmed in-game yet.
+
+Three markers ported from the predecessor project's Harmony-patch-based implementations, redone patch-free per this project's convention (see `git log` for the porting commits if the reasoning below needs more detail):
+- `WishlistMarkerProvider` — items on the ground matching `Profile.WishlistManager.GetWishlist()` (no server call, already loaded on the profile). Rescans `GameWorld.LootList` on a timer instead of the predecessor's `GameWorld.LootList` one-shot scan, so a marker disappears once another player/bot loots the item.
+- `HiddenStashMarkerProvider` — a fixed set of `LootableContainer`s per map, identifiable only by known GameObject name prefixes (`scontainer_wood_CAP`, `scontainer_Blue_Barrel_Base_Cap` — credit to the predecessor project/RaiRai for finding these). Predecessor hooked `GameWorld.OnGameStarted`; here it's a populated-once-with-retry `Object.FindObjectsOfType<LootableContainer>()` scan, same shape as `DoorMarkerProvider`.
+- `BackpackMarkerProvider` — the *local player's own* dropped/thrown backpack only (not corpses', not other players', not static loot backpacks). Predecessor hooked `PlayerInventoryController.ThrowItem`; here it polls `Player.Inventory.Equipment.GetSlot(EquipmentSlot.Backpack)` each frame (cheap - no scene/list scan) and only falls back to a throttled `GameWorld.LootList` scan once the slot goes from occupied to empty, to find the matching `LootItem` by `Item.Id`.
 
 Raid start/end is edge-detected in `SPTMapBehaviour.Update()` off `GameUtils.IsInRaid()` and drives all providers' `OnRaidStart`/`OnRaidEnd` + `MarkerManager.Clear()`.
 
 ### Quest debug panel
 
 `Plugin/Utils/QuestDebugPanel.cs` — dev-only tool, `F9` toggles a floating IMGUI panel listing every quest (tabbed Incomplete/Not started/Completed) with a "Finish" button per quest. The button calls `QuestController.TryInstantFinishQuest` (the same public entry point the native Tasks-screen "Complete quest" button uses), so reward grants/condition bookkeeping/chain unlocks all fire for real — it's not a fake completion. Works from the main menu or in a raid, via `ItemUiContext.Instance.QuestController` (persistent, not Player-bound). Exists to unblock testing later quests in a chain when an earlier quest's own completion trigger is bugged, without re-running a whole raid. Should be gated behind a debug/dev config flag (or removed) before treating this as a release build for other players, since it's a completion cheat.
+
+The same panel has a Prestige section backed by `Plugin/Utils/PrestigeDebugPatches.cs`. First attempt forced `PrestigeController.CanUpgrade` to `true` via Harmony postfix so the native tab's own gate would pass — but that getter is polled every frame by other native UI, and forcing it true made that other code actually execute a prestige-data path the local SPT server doesn't implement, flooding the log with `NotImplementedException` every frame. Replaced with direct calls that skip the gate instead of forcing it: "Show Prestige Screen" finds the open `InventoryScreen` and calls `_prestigeScreen.Show(profile, prestigeController, inventoryController, session)` directly (the same call the native tab's button click ends up making — requires Inventory to already be open); "Click Obtain Prestige" then calls `PrestigeScreen.ObtainPrestigeHandler()` directly (the button's own click handler), bypassing the button's disabled/interactable state. `PrestigeGlobalsLoadPatch` (flips `GameModeDescriptor.GameMode` to `Regular` for the duration of `TarkovApplication.GlobalsDataLoader.Load` so PvE sessions still populate `PrestigeTemplate` data) is the one remaining always-on Harmony patch here — it's a one-shot startup patch, not per-frame, so it doesn't have the same footgun. Confirmed working end-to-end in-game (2026-09-15): Show Prestige Screen → Click Obtain Prestige successfully triggers the native prestige flow.
 
 ### Key files
 
@@ -120,9 +127,10 @@ Raid start/end is edge-detected in `SPTMapBehaviour.Update()` off `GameUtils.IsI
 | `Plugin/Utils/MarkerManager.cs` | Marker list, Add/Remove |
 | `Plugin/Utils/GameUtils.cs` | EFT state helpers (raid detection, player categorization) |
 | `Plugin/Utils/MathUtils.cs` | `Rotate90Multiple`, coordinate math |
-| `Plugin/Utils/QuestDebugPanel.cs` | F9 dev panel, instant quest completion |
+| `Plugin/Utils/QuestDebugPanel.cs` | F9 dev panel, instant quest completion, Prestige debug tools |
+| `Plugin/Utils/PrestigeDebugPatches.cs` | Direct-invoke Prestige screen/button helpers backing the F9 panel |
 | `Plugin/Config/Settings.cs` | BepInEx `ConfigEntry` bindings |
-| `Plugin/DynamicMarkers/` | Marker providers (extracts, secrets, transit, doors, players/corpses, quests, BTR, airdrops) |
+| `Plugin/DynamicMarkers/` | Marker providers (extracts, secrets, transit, doors, players/corpses, quests, BTR, airdrops, wishlist, hidden stashes, dropped backpack) |
 
 ## Current state (as of 2026-09-10)
 
@@ -133,6 +141,7 @@ Raid start/end is edge-detected in `SPTMapBehaviour.Update()` off `GameUtils.IsI
 - A few floors have no distinct art on tarkov.dev at all (tile-only, not SVG) and are skipped rather than guessed at: Customs' 4th floor and Reserve's above-ground floors except Bunkers. Those areas just show the Ground level image underneath — a readability gap, not a correctness one.
 - Some display constants (mini-map size, zoom speed) are exposed via `Settings.cs` `ConfigEntry`s (visible as sliders in BepInEx ConfigurationManager); box sizing and key bindings are still hardcoded in `Plugin.cs`.
 - No POI labels yet.
+- 2026-09-15: added `WishlistMarkerProvider`, `HiddenStashMarkerProvider`, `BackpackMarkerProvider` (see Markers section above) - **not yet verified in-game**. `backpack.png` is a placeholder icon generated with PIL, not a real asset. Also reworked the F9 panel's Prestige tools from a `CanUpgrade`-forcing bypass (caused per-frame `NotImplementedException` spam once enabled) to direct `PrestigeScreen` method calls - this part **is** confirmed working in-game.
 
 ## IL2CPP interop notes
 
