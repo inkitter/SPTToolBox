@@ -27,6 +27,8 @@ namespace SPTMap.Config
         public static ConfigEntry<bool> ShowBoss;
         public static ConfigEntry<float> OtherPlayersPollIntervalMs;
         public static ConfigEntry<bool> ShowMarkerLabels;
+        public static ConfigEntry<bool> ShowHiddenStashes;
+        public static ConfigEntry<bool> ShowWishlist;
 
         public static ConfigEntry<float> EspDistance;
 
@@ -104,6 +106,20 @@ namespace SPTMap.Config
                 true,
                 "Whether markers that opt into it (e.g. extracts) show their name as a small "
                 + "always-on label instead of only on hover");
+
+            ShowHiddenStashes = config.Bind(
+                MarkersTitle,
+                "Show hidden stashes",
+                false,
+                "Whether to render markers for known hidden stash containers (off by default - "
+                + "spoiler-y for players who don't want cache locations highlighted)");
+
+            ShowWishlist = config.Bind(
+                MarkersTitle,
+                "Show wishlist items",
+                false,
+                "Whether to render markers for loose loot matching the profile's wishlist (off by "
+                + "default)");
 
             EspDistance = config.Bind(
                 EspTitle,

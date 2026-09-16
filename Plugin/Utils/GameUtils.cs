@@ -44,14 +44,28 @@ namespace SPTMap.Utils
 
         public static string GetCurrentMapInternalName()
         {
-            var gameWorld = Singleton<GameWorld>.Instance;
-            return gameWorld?.MainPlayer?.Location;
+            var player = GetMainPlayer();
+            return player == null ? null : player.Location;
         }
 
+        // GameWorld/Player are UnityEngine.Object-derived (MonoBehaviour) - a stale GameWorld from
+        // a previous raid can be destroyed-but-not-GC'd (Unity's fake-null pattern). `?.` compiles
+        // to a raw reference check that bypasses Unity's overridden ==/!= and treats that stale
+        // object as alive, so `gameWorld?.MainPlayer` used to hand back a destroyed Player whose
+        // own fields (e.g. _camera) never repopulate - this is exactly what made
+        // EnemyEspRenderer permanently log "mainPlayer: True, camera: False" for the rest of a
+        // raid. Explicit `== null` checks all the way down avoid that (see CLAUDE.md/memory:
+        // never ?./?? on UnityEngine.Object-derived types).
         public static Player GetMainPlayer()
         {
             var gameWorld = Singleton<GameWorld>.Instance;
-            return gameWorld?.MainPlayer;
+            if (gameWorld == null)
+            {
+                return null;
+            }
+
+            var player = gameWorld.MainPlayer;
+            return player == null ? null : player;
         }
 
         public static BTRView GetBTRView()

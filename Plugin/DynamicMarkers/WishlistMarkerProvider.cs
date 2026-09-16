@@ -138,9 +138,9 @@ namespace SPTMap.DynamicMarkers
             {
                 Category = Category,
                 ImagePath = ImagePath,
-                Text = loot.TemplateId.BSGLocalized(),
+                Text = loot.Item.ShortName.BSGLocalized(),
                 Color = MarkerColor,
-                ShowLabel = true,
+                ShowLabel = false,
                 GetPosition = () => MathUtils.ConvertToMapPosition(worldTransform.position),
                 GetWorldPosition = () => worldTransform.position,
             };

@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using EFT;
 using EFT.UI;
 using HarmonyLib;
@@ -105,10 +104,16 @@ namespace SPTMap.Utils
         // directly would put the real mode back well before Load's own async work (which reads
         // GameMode again past its first await) is done, leaving a window where the shared
         // GameModeDescriptor is wrong for any other code reading it concurrently (e.g. matching
-        // start-up right after). Defer the restore to a ContinueWith on the real completion.
+        // start-up right after). The real return type is Il2CppSystem.Threading.Tasks.Task (not
+        // System.Threading.Tasks.Task) - Harmony's IL emitter checks __result's declared type
+        // against the original method's actual return type, so a System.Threading.Tasks.Task
+        // parameter here fails to patch at all ("Cannot assign method return type ... to __result
+        // type ..."). Rather than relying on Il2Cpp Task's own ContinueWith (delegate marshaling
+        // there is unverified in this project), queue the pending restore and poll
+        // Il2CppSystem.Threading.Tasks.Task.IsCompleted once per frame from SPTMapController.Update.
         [HarmonyPostfix]
         [HarmonyPatch(typeof(TarkovApplication.GlobalsDataLoader), nameof(TarkovApplication.GlobalsDataLoader.Load))]
-        public static void Postfix(IEftSession __0, Task __result, EGameMode __state)
+        public static void Postfix(IEftSession __0, Il2CppSystem.Threading.Tasks.Task __result, EGameMode __state)
         {
             var descriptor = Descriptor(__0);
             if (descriptor == null)
@@ -122,9 +127,36 @@ namespace SPTMap.Utils
                 return;
             }
 
-            __result.ContinueWith(
-                _ => descriptor._GameMode_k__BackingField = __state,
-                TaskContinuationOptions.ExecuteSynchronously);
+            _pendingTask = __result;
+            _pendingDescriptor = descriptor;
+            _pendingState = __state;
+        }
+
+        private static Il2CppSystem.Threading.Tasks.Task _pendingTask;
+        private static GameModeDescriptor _pendingDescriptor;
+        private static EGameMode _pendingState;
+
+        // Polled from SPTMapController.Update - see comment on Postfix above for why this isn't a
+        // ContinueWith callback.
+        public static void Tick()
+        {
+            if (_pendingTask == null)
+            {
+                return;
+            }
+
+            if (!_pendingTask.IsCompleted)
+            {
+                return;
+            }
+
+            if (_pendingDescriptor != null)
+            {
+                _pendingDescriptor._GameMode_k__BackingField = _pendingState;
+            }
+
+            _pendingTask = null;
+            _pendingDescriptor = null;
         }
 
         private static GameModeDescriptor Descriptor(IEftSession session)

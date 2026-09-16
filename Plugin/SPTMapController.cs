@@ -147,6 +147,8 @@ namespace SPTMap
 
         private void UpdateInternal()
         {
+            PrestigeGlobalsLoadPatch.Tick();
+
             if (Input.GetKeyDown(PeekKey))
             {
                 _peekToggled = !_peekToggled;
@@ -335,8 +337,11 @@ namespace SPTMap
 
             try
             {
-                _wishlistMarkerProvider ??= new WishlistMarkerProvider();
-                _wishlistMarkerProvider.OnRaidStart();
+                if (SPTMapConfig.ShowWishlist.Value)
+                {
+                    _wishlistMarkerProvider ??= new WishlistMarkerProvider();
+                    _wishlistMarkerProvider.OnRaidStart();
+                }
             }
             catch (Exception e)
             {
@@ -345,8 +350,11 @@ namespace SPTMap
 
             try
             {
-                _hiddenStashMarkerProvider ??= new HiddenStashMarkerProvider();
-                _hiddenStashMarkerProvider.OnRaidStart();
+                if (SPTMapConfig.ShowHiddenStashes.Value)
+                {
+                    _hiddenStashMarkerProvider ??= new HiddenStashMarkerProvider();
+                    _hiddenStashMarkerProvider.OnRaidStart();
+                }
             }
             catch (Exception e)
             {
@@ -392,7 +400,10 @@ namespace SPTMap
         {
             try
             {
-                _hiddenStashMarkerProvider?.OnRaidStart();
+                if (SPTMapConfig.ShowHiddenStashes.Value)
+                {
+                    _hiddenStashMarkerProvider?.OnRaidStart();
+                }
             }
             catch (Exception e)
             {
@@ -428,7 +439,10 @@ namespace SPTMap
         {
             try
             {
-                _wishlistMarkerProvider?.Tick(Time.deltaTime);
+                if (SPTMapConfig.ShowWishlist.Value)
+                {
+                    _wishlistMarkerProvider?.Tick(Time.deltaTime);
+                }
             }
             catch (Exception e)
             {

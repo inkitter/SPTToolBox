@@ -78,7 +78,11 @@ namespace SPTMap.DynamicMarkers
             {
                 Category = Category,
                 ImagePath = ImagePath,
-                Text = point.Description.BSGLocalized(),
+                // point.Description returns the raw numeric transit id, not a display name - the
+                // actual locale-keyed name lives on the nested parameters struct (see
+                // LocationSettings.Location.TransitParameters.name/.description in the decompiled
+                // Assembly-CSharp.dll).
+                Text = point.parameters.name.BSGLocalized(),
                 ShowLabel = true,
                 GetPosition = () => pos,
                 GetWorldPosition = () => worldPos,

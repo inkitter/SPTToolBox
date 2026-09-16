@@ -34,16 +34,18 @@ namespace SPTMap.Utils
                 return;
             }
 
-            // Camera.main is unreliable here - EFT has several objects tagged MainCamera (scope
-            // optics, spectator, etc) and which one it resolves to isn't guaranteed to be the
-            // local player's own FPS camera, which is what caused the totally-offset boxes. The
-            // player's actual rendering camera is exposed directly as Player._camera.
-            var mainPlayer = GameUtils.GetMainPlayer();
-            var camera = mainPlayer?._camera;
+            // Player._camera (the game's own per-player field) turned out to not reliably get
+            // populated for MainPlayer in practice - it stayed null for an entire raid in testing,
+            // permanently blanking the overlay. Camera.main is also unreliable (EFT tags several
+            // objects MainCamera - scope optics, spectator, etc). Instead, resolve the screen
+            // camera ourselves: the enabled, non-render-texture camera with the highest depth is
+            // the one actually drawing to the screen, regardless of what the game's own player
+            // state thinks the "current" camera is.
+            var camera = ResolveActiveCamera();
             var gameWorld = Singleton<GameWorld>.Instance;
             if (camera == null || gameWorld == null)
             {
-                LogUnavailableOnce($"camera or gameWorld null (mainPlayer: {mainPlayer != null}, camera: {camera != null}, gameWorld: {gameWorld != null})");
+                LogUnavailableOnce($"camera or gameWorld null (camera: {camera != null}, gameWorld: {gameWorld != null})");
                 return;
             }
 
@@ -72,6 +74,26 @@ namespace SPTMap.Utils
             {
                 LogUnavailableOnce($"{skippedNoBodyParts} enemy player(s) had no MainParts[head] yet (not perceived/registered by hit system?)");
             }
+        }
+
+        private static Camera ResolveActiveCamera()
+        {
+            Camera best = null;
+            var cameras = Camera.allCameras;
+            foreach (var cam in cameras)
+            {
+                if (cam == null || !cam.enabled || cam.targetTexture != null)
+                {
+                    continue;
+                }
+
+                if (best == null || cam.depth > best.depth)
+                {
+                    best = cam;
+                }
+            }
+
+            return best;
         }
 
         private static string _lastUnavailableReason;
@@ -166,11 +188,17 @@ namespace SPTMap.Utils
                     return false;
                 }
 
-                // ScreenToGUIPoint is the Unity-provided conversion from a WorldToScreenPoint-style
-                // screen coordinate into the current OnGUI coordinate space - it accounts for
-                // render scale/DPI/any camera-vs-Screen pixel mismatch internally, so there's no
-                // "assume camera pixel size equals Screen.width/height" scale math to get wrong.
-                var guiPoint = GUIUtility.ScreenToGUIPoint(new Vector2(screen.x, screen.y));
+                // WorldToScreenPoint returns coordinates in the camera's own render-pixel space
+                // (camera.pixelWidth/pixelHeight), which is not guaranteed to equal Screen.width/
+                // height - render-scale settings or OS DPI scaling can make them differ by a
+                // constant factor. GUIUtility.ScreenToGUIPoint assumes they match, so under a
+                // mismatch it silently produced a box scaled toward the top-left corner (e.g. at
+                // exactly half size/position under a 2x pixel-vs-logical mismatch). Normalize by
+                // the camera's own pixel dimensions first, then remap into logical Screen space,
+                // so a mismatch between the two can't skew the result.
+                var normalizedX = screen.x / camera.pixelWidth;
+                var normalizedY = screen.y / camera.pixelHeight;
+                var guiPoint = new Vector2(normalizedX * Screen.width, (1f - normalizedY) * Screen.height);
                 if (guiPoint.x < minX) minX = guiPoint.x;
                 if (guiPoint.x > maxX) maxX = guiPoint.x;
                 if (guiPoint.y < minY) minY = guiPoint.y;
