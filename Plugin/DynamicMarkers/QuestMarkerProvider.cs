@@ -8,13 +8,7 @@ namespace SPTMap.DynamicMarkers
     // as the old project (scav raids don't have PMC quest objectives to show).
     public class QuestMarkerProvider
     {
-        // Conditions (and so markers) can go from incomplete to complete mid-raid - re-derive the
-        // whole marker set on this interval so completed objectives drop off instead of lingering
-        // for the rest of the raid.
-        private const float RefreshIntervalSeconds = 3f;
-
         private readonly List<MapMarker> _markers = new();
-        private float _refreshAccumulator;
 
         // Mirrors ExtractMarkerProvider/DoorMarkerProvider - the main player isn't necessarily
         // resolvable the instant OnRaidStart first runs, so keep retrying each frame until it is.
@@ -41,25 +35,20 @@ namespace SPTMap.DynamicMarkers
             QuestUtils.DiscardQuestData();
             RemoveMarkers();
             _populated = false;
-            _refreshAccumulator = 0f;
         }
 
-        // Called every frame from SPTMapBehaviour.Update while in a raid; only actually refreshes
-        // once the configured interval has elapsed and the initial marker set has been populated.
-        public void Tick(float deltaTime)
+        // Called once on the frame the map is opened (see SPTMapController's peek-toggle edge) -
+        // this is the only place quest markers refresh after the initial raid-start population.
+        // No periodic re-trigger even if the map stays open a long time: a fixed-frame-cost rescan
+        // (re-deriving every incomplete quest's conditions) matters far less than avoiding another
+        // source of periodic frame drops - close and reopen the map to force a fresh look.
+        public void RefreshNow()
         {
             if (!_populated)
             {
                 return;
             }
 
-            _refreshAccumulator += deltaTime;
-            if (_refreshAccumulator < RefreshIntervalSeconds)
-            {
-                return;
-            }
-
-            _refreshAccumulator = 0f;
             RemoveMarkers();
             AddQuestMarkers();
         }

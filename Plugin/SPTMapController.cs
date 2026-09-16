@@ -149,6 +149,18 @@ namespace SPTMap
         {
             PrestigeGlobalsLoadPatch.Tick();
 
+            if (GameUtils.IsInRaid() && SPTMapConfig.ShowHitDamageNumbers.Value)
+            {
+                try
+                {
+                    HitDamagePopupRenderer.Tick();
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError($"HitDamagePopupRenderer.Tick exception: {e}");
+                }
+            }
+
             if (Input.GetKeyDown(PeekKey))
             {
                 _peekToggled = !_peekToggled;
@@ -157,6 +169,58 @@ namespace SPTMap
                 {
                     Cursor.lockState = CursorLockMode.Locked;
                     Cursor.visible = false;
+                }
+                else if (GameUtils.IsInRaid())
+                {
+                    // map just opened - refresh the throttled quest/wishlist markers immediately
+                    // instead of leaving them stale until their next 60s tick fires.
+                    try
+                    {
+                        _questMarkerProvider?.RefreshNow();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Quest marker refresh-on-open exception: {e}");
+                    }
+
+                    try
+                    {
+                        if (SPTMapConfig.ShowWishlist.Value)
+                        {
+                            _wishlistMarkerProvider?.RefreshNow();
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Wishlist marker refresh-on-open exception: {e}");
+                    }
+
+                    try
+                    {
+                        _airdropMarkerProvider?.RefreshNow();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Airdrop marker refresh-on-open exception: {e}");
+                    }
+
+                    try
+                    {
+                        _backpackMarkerProvider?.RefreshNow();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Backpack marker refresh-on-open exception: {e}");
+                    }
+
+                    try
+                    {
+                        _extractMarkerProvider?.RefreshNow();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Extract marker refresh-on-open exception: {e}");
+                    }
                 }
             }
 
@@ -196,13 +260,17 @@ namespace SPTMap
                 TryRetryTransitMarkers();
                 TryRetrySecretMarkers();
                 TryRetryHiddenStashMarkers();
-                TryTickExtractMarkers();
-                TryTickQuestMarkers();
                 TryTickOtherPlayers();
                 TryTickBtrMarker();
-                TryTickAirdropMarkers();
-                TryTickWishlistMarkers();
-                TryTickBackpackMarkers();
+
+                // Quest/wishlist/airdrop/backpack/extract/door-key-ownership are all expensive
+                // rescans with no natural per-frame trigger - rather than re-running them on any
+                // periodic timer (even a long one) while the map is open, each is refreshed exactly
+                // once, on the frame the map is opened (see the PeekKey handler below calling each
+                // provider's RefreshNow()/SetMapOpen()). Staying open longer doesn't re-trigger
+                // them - close and reopen the map to force a fresh look. BTR/other-players are left
+                // as genuine per-frame polls since their whole point is live tracking.
+                DoorMarkerProvider.SetMapOpen(_peekToggled);
             }
             _wasInRaid = inRaid;
 
@@ -423,45 +491,6 @@ namespace SPTMap
             }
         }
 
-        private void TryTickAirdropMarkers()
-        {
-            try
-            {
-                _airdropMarkerProvider?.Tick(Time.deltaTime);
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"Airdrop marker refresh exception: {e}");
-            }
-        }
-
-        private void TryTickWishlistMarkers()
-        {
-            try
-            {
-                if (SPTMapConfig.ShowWishlist.Value)
-                {
-                    _wishlistMarkerProvider?.Tick(Time.deltaTime);
-                }
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"Wishlist marker refresh exception: {e}");
-            }
-        }
-
-        private void TryTickBackpackMarkers()
-        {
-            try
-            {
-                _backpackMarkerProvider?.Tick(Time.deltaTime);
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"Backpack marker refresh exception: {e}");
-            }
-        }
-
         private void TryRetryExtractMarkers()
         {
             try
@@ -471,18 +500,6 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"Extract marker retry exception: {e}");
-            }
-        }
-
-        private void TryTickExtractMarkers()
-        {
-            try
-            {
-                _extractMarkerProvider?.Tick(Time.deltaTime);
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"Extract marker refresh exception: {e}");
             }
         }
 
@@ -507,18 +524,6 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"Quest marker retry exception: {e}");
-            }
-        }
-
-        private void TryTickQuestMarkers()
-        {
-            try
-            {
-                _questMarkerProvider?.Tick(Time.deltaTime);
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"Quest marker refresh exception: {e}");
             }
         }
 
@@ -633,6 +638,15 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidEnd backpack marker teardown exception: {e}");
+            }
+
+            try
+            {
+                HitDamagePopupRenderer.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd hit damage popup teardown exception: {e}");
             }
 
             MarkerManager.Clear();
@@ -887,6 +901,15 @@ namespace SPTMap
                     {
                         Plugin.Log.LogError($"EnemyEspRenderer.Draw exception: {e}");
                     }
+
+                    try
+                    {
+                        HitDamagePopupRenderer.Draw();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"HitDamagePopupRenderer.Draw exception: {e}");
+                    }
                 }
 
                 MapDef def;
@@ -1107,7 +1130,8 @@ namespace SPTMap
 
             var imagePath = marker.GetImagePath?.Invoke() ?? marker.ImagePath;
             var texture = MapUtils.GetTextureByPath(imagePath);
-            var rect = new Rect(screenX - MarkerIconSize / 2f, screenY - MarkerIconSize / 2f, MarkerIconSize, MarkerIconSize);
+            var iconSize = marker.IconSizeOverride ?? MarkerIconSize;
+            var rect = new Rect(screenX - iconSize / 2f, screenY - iconSize / 2f, iconSize, iconSize);
             var hovered = !string.IsNullOrEmpty(marker.Text) && rect.Contains(Event.current.mousePosition);
 
             var markerColor = marker.GetColor?.Invoke() ?? marker.Color;
@@ -1119,6 +1143,11 @@ namespace SPTMap
                     var markerLevel = ResolveLevelForPosition(def, worldPos.Value);
                     if (markerLevel != null && markerLevel != activeLevel)
                     {
+                        if (marker.HideOnOtherFloors)
+                        {
+                            return null;
+                        }
+
                         markerColor.a *= OtherFloorAlpha;
                     }
                 }
@@ -1132,7 +1161,7 @@ namespace SPTMap
                 GUI.DrawTexture(rect, Texture2D.whiteTexture);
                 GUI.color = prevColor;
                 DrawMarkerLabelIfEnabled(marker, screenX, rect.yMax, markerColor.a);
-                return hovered ? marker.Text : null;
+                return hovered ? (marker.GetText?.Invoke() ?? marker.Text) : null;
             }
 
             var rawFacing = marker.GetFacing?.Invoke();
@@ -1153,7 +1182,23 @@ namespace SPTMap
 
             GUI.color = prevColor;
             DrawMarkerLabelIfEnabled(marker, screenX, rect.yMax, markerColor.a);
-            return hovered ? marker.Text : null;
+            return hovered ? (marker.GetText?.Invoke() ?? marker.Text) : null;
+        }
+
+        // routes a marker's always-on-label toggle by its Category string (set by the owning
+        // provider - see OtherPlayersMarkerProvider/ExtractMarkerProvider/SecretMarkerProvider/
+        // TransitMarkerProvider for the exact category strings) rather than a single blanket
+        // setting, so e.g. enemy names can stay on while teammate names are hidden.
+        private static bool IsLabelCategoryEnabled(string category)
+        {
+            return category switch
+            {
+                "Friendly Player" => SPTMapConfig.ShowFriendlyPlayerLabels.Value,
+                "Enemy Player" or "Scav" or "Boss" => SPTMapConfig.ShowEnemyPlayerLabels.Value,
+                "Extract" or "Secret Extract" => SPTMapConfig.ShowExtractLabels.Value,
+                "Transit" => SPTMapConfig.ShowTransitLabels.Value,
+                _ => SPTMapConfig.ShowOtherMarkerLabels.Value,
+            };
         }
 
         private static GUIStyle _markerLabelStyle;
@@ -1168,7 +1213,7 @@ namespace SPTMap
         // (dark offset, then light) as a cheap fake outline so it stays readable over any map color.
         private static void DrawMarkerLabelIfEnabled(MapMarker marker, float centerX, float topY, float alpha)
         {
-            if (!marker.ShowLabel || string.IsNullOrEmpty(marker.Text) || !SPTMapConfig.ShowMarkerLabels.Value)
+            if (!marker.ShowLabel || string.IsNullOrEmpty(marker.Text) || !IsLabelCategoryEnabled(marker.Category))
             {
                 return;
             }

@@ -19,10 +19,12 @@ namespace SPTMap.DynamicMarkers
         private const string ImagePath = "Markers/star.png";
         private static readonly Color MarkerColor = Color.yellow;
 
-        private const float RescanIntervalSeconds = 5f;
-
         private readonly Dictionary<LootItem, MapMarker> _markers = new();
-        private float _rescanAccumulator;
+        // reused across Rescan calls instead of allocating three fresh collections every trigger -
+        // same shape as AirdropMarkerProvider's scratch fields.
+        private readonly HashSet<string> _wishlistIdsScratch = new();
+        private readonly HashSet<LootItem> _foundScratch = new();
+        private readonly List<LootItem> _staleScratch = new();
 
         public void OnRaidStart()
         {
@@ -37,22 +39,18 @@ namespace SPTMap.DynamicMarkers
             }
 
             _markers.Clear();
-            _rescanAccumulator = 0f;
+            _wishlistIdsScratch.Clear();
+            _foundScratch.Clear();
+            _staleScratch.Clear();
         }
 
-        // called every frame from SPTMapController.Update while in a raid; only actually rescans
-        // once the interval elapses, since walking GameWorld.LootList + a fresh wishlist lookup
-        // every frame is unnecessary overhead. Re-diffing (not just adding) picks up items other
-        // players/bots looted since the last scan, so their markers don't linger.
-        public void Tick(float deltaTime)
+        // Called once on the frame the map is opened (see SPTMapController's peek-toggle edge) -
+        // this is the only place wishlist markers refresh after the initial raid-start scan. No
+        // periodic re-trigger even if the map stays open a long time: re-diffing the whole
+        // GameWorld.LootList matters far less than avoiding another source of periodic frame drops
+        // - close and reopen the map to force a fresh look.
+        public void RefreshNow()
         {
-            _rescanAccumulator += deltaTime;
-            if (_rescanAccumulator < RescanIntervalSeconds)
-            {
-                return;
-            }
-
-            _rescanAccumulator = 0f;
             Rescan();
         }
 
@@ -89,38 +87,38 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
-            var wishlistIds = new HashSet<string>();
+            _wishlistIdsScratch.Clear();
             foreach (var id in wishlist.Keys.ToSystemList())
             {
-                wishlistIds.Add(id);
+                _wishlistIdsScratch.Add(id);
             }
 
-            var found = new HashSet<LootItem>();
+            _foundScratch.Clear();
             foreach (var killable in lootList)
             {
                 var loot = killable.TryCast<LootItem>();
-                if (loot != null && wishlistIds.Contains(loot.TemplateId))
+                if (loot != null && _wishlistIdsScratch.Contains(loot.TemplateId))
                 {
-                    found.Add(loot);
+                    _foundScratch.Add(loot);
                 }
             }
 
-            var stale = new List<LootItem>();
+            _staleScratch.Clear();
             foreach (var tracked in _markers.Keys)
             {
-                if (!found.Contains(tracked))
+                if (!_foundScratch.Contains(tracked))
                 {
-                    stale.Add(tracked);
+                    _staleScratch.Add(tracked);
                 }
             }
 
-            foreach (var item in stale)
+            foreach (var item in _staleScratch)
             {
                 MarkerManager.Remove(_markers[item]);
                 _markers.Remove(item);
             }
 
-            foreach (var loot in found)
+            foreach (var loot in _foundScratch)
             {
                 AddMarker(loot);
             }

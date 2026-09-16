@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Comfort.Common;
 using EFT;
 using SPTMap.Config;
@@ -76,8 +77,26 @@ namespace SPTMap.Utils
             }
         }
 
-        private static Camera ResolveActiveCamera()
+        // shared with HitDamagePopupRenderer, which needs the same "which camera is actually
+        // drawing the screen" resolution to project damage-number popups. Cached across both
+        // callers - Camera.allCameras allocates a fresh array of every scene camera on every call,
+        // and without caching this ran twice per frame (once from each renderer) for the whole
+        // raid, a steady GC source that was a measurable contributor to periodic frame drops. The
+        // active screen camera essentially never changes frame-to-frame outside a scene transition,
+        // so a short re-resolve interval is plenty; an explicit `!= null` (not `?.`/`??` - see
+        // CLAUDE.md/memory) also forces an immediate re-resolve if the cached camera gets destroyed
+        // (Unity fake-null) before the interval is up.
+        private const float CacheDurationSeconds = 1f;
+        private static Camera _cachedCamera;
+        private static float _cacheExpireTime;
+
+        public static Camera ResolveActiveCamera()
         {
+            if (_cachedCamera != null && Time.time < _cacheExpireTime)
+            {
+                return _cachedCamera;
+            }
+
             Camera best = null;
             var cameras = Camera.allCameras;
             foreach (var cam in cameras)
@@ -93,7 +112,26 @@ namespace SPTMap.Utils
                 }
             }
 
+            _cachedCamera = best;
+            _cacheExpireTime = Time.time + CacheDurationSeconds;
             return best;
+        }
+
+        // shared with HitDamagePopupRenderer - see the normalization comment on its call site
+        // below for why this isn't a plain GUIUtility.ScreenToGUIPoint call.
+        public static bool TryWorldToGui(Camera camera, Vector3 worldPos, out Vector2 guiPoint)
+        {
+            var screen = camera.WorldToScreenPoint(worldPos);
+            if (screen.z <= 0f)
+            {
+                guiPoint = default;
+                return false;
+            }
+
+            var normalizedX = screen.x / camera.pixelWidth;
+            var normalizedY = screen.y / camera.pixelHeight;
+            guiPoint = new Vector2(normalizedX * Screen.width, (1f - normalizedY) * Screen.height);
+            return true;
         }
 
         private static string _lastUnavailableReason;
@@ -180,25 +218,14 @@ namespace SPTMap.Utils
 
             foreach (var corner in corners)
             {
-                var screen = camera.WorldToScreenPoint(corner);
-                if (screen.z <= 0f)
+                // behind the camera - the projected xy would be meaningless (mirrored) - bail the
+                // whole box rather than draw a garbage rect. See TryWorldToGui for why this isn't
+                // a plain GUIUtility.ScreenToGUIPoint call.
+                if (!TryWorldToGui(camera, corner, out var guiPoint))
                 {
-                    // behind the camera - the projected xy is meaningless (mirrored), bail entirely
-                    // rather than draw a garbage box.
                     return false;
                 }
 
-                // WorldToScreenPoint returns coordinates in the camera's own render-pixel space
-                // (camera.pixelWidth/pixelHeight), which is not guaranteed to equal Screen.width/
-                // height - render-scale settings or OS DPI scaling can make them differ by a
-                // constant factor. GUIUtility.ScreenToGUIPoint assumes they match, so under a
-                // mismatch it silently produced a box scaled toward the top-left corner (e.g. at
-                // exactly half size/position under a 2x pixel-vs-logical mismatch). Normalize by
-                // the camera's own pixel dimensions first, then remap into logical Screen space,
-                // so a mismatch between the two can't skew the result.
-                var normalizedX = screen.x / camera.pixelWidth;
-                var normalizedY = screen.y / camera.pixelHeight;
-                var guiPoint = new Vector2(normalizedX * Screen.width, (1f - normalizedY) * Screen.height);
                 if (guiPoint.x < minX) minX = guiPoint.x;
                 if (guiPoint.x > maxX) maxX = guiPoint.x;
                 if (guiPoint.y < minY) minY = guiPoint.y;
@@ -212,23 +239,139 @@ namespace SPTMap.Utils
             var boxRect = new Rect(minX, minY, maxX - minX, maxY - minY);
             DrawBoxOutline(boxRect, color);
 
-            var chest = player.HealthController.GetBodyPartHealth(EBodyPart.Chest, false);
-            var hpText = $"{Mathf.CeilToInt(chest.Current)}/{Mathf.CeilToInt(chest.Maximum)}";
-            var distanceText = $"{distance:0}m";
+            if (Settings.ShowAiInfo.Value)
+            {
+                DrawAiInfo(player, boxRect, color);
+            }
 
-            // the label is wider than most enemy boxes on screen (especially at range) - size it
-            // independently of boxRect.width and center it on the box, rather than cramming the
-            // text into the box's own (often narrower) width where it wraps.
-            var centerX = boxRect.x + boxRect.width / 2f;
-            var labelX = centerX - LabelWidth / 2f;
+            if (Settings.ShowBodyPartHealth.Value)
+            {
+                DrawBodyPartHealthBreakdown(player, boxRect, color);
+            }
+            else
+            {
+                var chest = player.HealthController.GetBodyPartHealth(EBodyPart.Chest, false);
+                var hpText = $"{Mathf.CeilToInt(chest.Current)}/{Mathf.CeilToInt(chest.Maximum)}";
+                var distanceText = $"{distance:0}m";
+
+                // the label is wider than most enemy boxes on screen (especially at range) - size
+                // it independently of boxRect.width and center it on the box, rather than
+                // cramming the text into the box's own (often narrower) width where it wraps.
+                var centerX = boxRect.x + boxRect.width / 2f;
+                var labelX = centerX - LabelWidth / 2f;
+
+                var prevColor = GUI.color;
+                GUI.color = color;
+                GUI.Label(new Rect(labelX, boxRect.y - 30f, LabelWidth, 16f), hpText, HpLabelStyle);
+                GUI.Label(new Rect(labelX, boxRect.y - 16f, LabelWidth, 16f), distanceText, HpLabelStyle);
+                GUI.color = prevColor;
+            }
+
+            return true;
+        }
+
+        private const float AiInfoWidth = 150f;
+        private const float AiInfoHeight = 14f;
+
+        // real players have no AIData.BotOwner - this is a no-op for them, only bots carry the
+        // difficulty/behavior state this reads. BotOwner itself is a MonoBehaviour
+        // (UnityEngine.Object-derived), so it gets the explicit `== null` treatment rather than
+        // `?.` (see CLAUDE.md/memory) - everything hanging off it here (BotMemory, BotSettings,
+        // EnemyInfo, StandartBotBrain) is a plain Il2CppSystem.Object though, so `?.` is fine on
+        // those.
+        private static void DrawAiInfo(Player player, Rect boxRect, Color color)
+        {
+            var aiData = player.AIData;
+            if (aiData == null || !aiData.IsAI)
+            {
+                return;
+            }
+
+            var bot = aiData.BotOwner;
+            if (bot == null)
+            {
+                return;
+            }
+
+            var difficulty = bot.Settings?._difficulty;
+            var status = ResolveAiStatus(bot);
+            var layer = bot.Brain?.ActiveLayerName();
+
+            var parts = new List<string>(3);
+            if (difficulty.HasValue) parts.Add(difficulty.Value.ToString());
+            if (!string.IsNullOrEmpty(status)) parts.Add(status);
+            if (!string.IsNullOrEmpty(layer)) parts.Add(layer);
+
+            if (parts.Count == 0)
+            {
+                return;
+            }
+
+            var text = string.Join(" / ", parts);
 
             var prevColor = GUI.color;
             GUI.color = color;
-            GUI.Label(new Rect(labelX, boxRect.y - 30f, LabelWidth, 16f), hpText, HpLabelStyle);
-            GUI.Label(new Rect(labelX, boxRect.y - 16f, LabelWidth, 16f), distanceText, HpLabelStyle);
+            GUI.Label(new Rect(boxRect.x + boxRect.width / 2f - AiInfoWidth / 2f, boxRect.yMax + 2f, AiInfoWidth, AiInfoHeight), text, HpLabelStyle);
             GUI.color = prevColor;
+        }
 
-            return true;
+        private static string ResolveAiStatus(BotOwner bot)
+        {
+            var memory = bot.Memory;
+            if (memory == null)
+            {
+                return null;
+            }
+
+            if (memory.IsPeace)
+            {
+                return "peaceful";
+            }
+
+            var mainPlayer = GameUtils.GetMainPlayer();
+            var goalEnemy = memory.GoalEnemy;
+            if (goalEnemy != null && mainPlayer != null && goalEnemy.Person != null && goalEnemy.Person.ProfileId == mainPlayer.ProfileId)
+            {
+                return goalEnemy.IsVisible ? "chasing you!" : "searching for you";
+            }
+
+            return memory.HaveEnemy ? "in combat" : "alert";
+        }
+
+        private const float PartLabelWidth = 34f;
+        private const float PartLabelHeight = 14f;
+        private const float SideLabelOffset = 2f;
+
+        // Positions are box-relative fractions, not separate world-space projections per part -
+        // EFT doesn't track a live world position for "stomach" (only a health value split off
+        // the chest hit), and reusing the box we already computed from head/feet keeps every
+        // label glued to the same silhouette instead of drifting independently. Matches the
+        // requested layout: head above the box, chest upper-inside, stomach lower-inside, arms on
+        // the left/right edges, legs at the bottom corners.
+        private static void DrawBodyPartHealthBreakdown(Player player, Rect boxRect, Color color)
+        {
+            var health = player.HealthController;
+
+            string Hp(EBodyPart part)
+            {
+                var hp = health.GetBodyPartHealth(part, false);
+                return Mathf.CeilToInt(hp.Current).ToString();
+            }
+
+            var centerX = boxRect.x + boxRect.width / 2f;
+
+            var prevColor = GUI.color;
+            GUI.color = color;
+
+            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.y - PartLabelHeight - 2f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.Head), HpLabelStyle);
+            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.y + boxRect.height * 0.2f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.Chest), HpLabelStyle);
+            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.yMax - boxRect.height * 0.2f - PartLabelHeight, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.Stomach), HpLabelStyle);
+            GUI.Label(new Rect(boxRect.x - PartLabelWidth - SideLabelOffset, boxRect.y + boxRect.height * 0.3f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.LeftArm), HpLabelStyle);
+            GUI.Label(new Rect(boxRect.xMax + SideLabelOffset, boxRect.y + boxRect.height * 0.3f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.RightArm), HpLabelStyle);
+            GUI.Label(new Rect(boxRect.x - PartLabelWidth - SideLabelOffset, boxRect.yMax - PartLabelHeight, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.LeftLeg), HpLabelStyle);
+            GUI.Label(new Rect(boxRect.xMax + SideLabelOffset, boxRect.yMax - PartLabelHeight, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.RightLeg), HpLabelStyle);
+
+            GUI.color = prevColor;
         }
 
         private const float LineThickness = 2f;

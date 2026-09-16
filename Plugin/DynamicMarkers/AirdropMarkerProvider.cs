@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using EFT.SynchronizableObjects;
 using SPTMap.Data;
 using SPTMap.Utils;
@@ -21,10 +20,10 @@ namespace SPTMap.DynamicMarkers
         private const string ImagePath = "Markers/airdrop.png";
         private static readonly Color MarkerColor = new(1f, 0.65f, 0f);
 
-        private const float RescanIntervalSeconds = 2f;
-
         private readonly Dictionary<AirdropSynchronizableObject, MapMarker> _markers = new();
-        private float _rescanAccumulator;
+        // reused across Rescan calls instead of allocating a fresh HashSet/List every scan.
+        private readonly HashSet<AirdropSynchronizableObject> _foundScratch = new();
+        private readonly List<AirdropSynchronizableObject> _staleScratch = new();
 
         public void OnRaidStart()
         {
@@ -39,20 +38,19 @@ namespace SPTMap.DynamicMarkers
             }
 
             _markers.Clear();
-            _rescanAccumulator = 0f;
+            _foundScratch.Clear();
+            _staleScratch.Clear();
         }
 
-        // called every frame from SPTMapController.Update while in a raid; only actually rescans
-        // once the interval elapses, since FindObjectsOfType walks the whole scene.
-        public void Tick(float deltaTime)
+        // Called once on the frame the map is opened (see SPTMapController's peek-toggle edge) -
+        // this is the only place airdrop markers refresh after the initial raid-start scan. No
+        // periodic re-trigger even if the map stays open a long time: this is a full-scene
+        // FindObjectsOfType scan, and even at 20s it was a measurable contributor to periodic
+        // frame drops with every disable-able feature (ESP/hit numbers/etc) turned off - avoiding
+        // that matters far more than catching a crate the instant it spawns. Close and reopen the
+        // map to force a fresh look.
+        public void RefreshNow()
         {
-            _rescanAccumulator += deltaTime;
-            if (_rescanAccumulator < RescanIntervalSeconds)
-            {
-                return;
-            }
-
-            _rescanAccumulator = 0f;
             Rescan();
         }
 
@@ -64,15 +62,28 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
-            var foundSet = found.ToHashSet();
+            _foundScratch.Clear();
+            foreach (var airdrop in found)
+            {
+                _foundScratch.Add(airdrop);
+            }
 
-            foreach (var stale in _markers.Keys.Where(k => !foundSet.Contains(k)).ToList())
+            _staleScratch.Clear();
+            foreach (var tracked in _markers.Keys)
+            {
+                if (!_foundScratch.Contains(tracked))
+                {
+                    _staleScratch.Add(tracked);
+                }
+            }
+
+            foreach (var stale in _staleScratch)
             {
                 MarkerManager.Remove(_markers[stale]);
                 _markers.Remove(stale);
             }
 
-            foreach (var airdrop in foundSet)
+            foreach (var airdrop in _foundScratch)
             {
                 AddMarker(airdrop);
             }

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using EFT.Interactive;
 using SPTMap.Data;
 using SPTMap.Utils;
@@ -91,31 +90,51 @@ namespace SPTMap.DynamicMarkers
         // (see D:\Git\SPT-DynamicMaps\MEMORY.md "运行时联调记录（续六/七）" for the identical
         // failure mode on AllPlayersEverExisted). Throttling the scan to a few times a second
         // shrinks that window to effectively nothing while staying visually "live enough".
-        private const float KeyCacheRefreshInterval = 0.5f;
-        private static float _keyCacheTime = float.NegativeInfinity;
-        private static HashSet<string> _keyCache = new();
+        // reused across refreshes instead of allocating a fresh HashSet (plus a ToSystemList copy
+        // and a LINQ Select chain on top of that) - this used to run unconditionally on a 0.5s
+        // timer for the whole raid (no settings gate, unlike most other providers) and was a
+        // measurable contributor to periodic frame drops even with every other heavy feature
+        // disabled.
+        private static readonly HashSet<string> _keyCache = new();
+
+        // Set every frame by SPTMapController from its _peekToggled state - the key-ownership scan
+        // only refreshes once, on the frame the map is opened (see the `open && !_mapOpen` edge
+        // below), not on any periodic timer even if the map stays open a long time: avoiding
+        // another source of periodic frame drops matters far more than a door's key-icon staying
+        // in sync the instant a key is picked up. Door markers still draw on the always-on minimap
+        // using whatever the cache last held; close and reopen the map to force a fresh look.
+        private static bool _mapOpen;
+
+        public static void SetMapOpen(bool open)
+        {
+            if (open && !_mapOpen)
+            {
+                RefreshOwnedKeyIds();
+            }
+
+            _mapOpen = open;
+        }
 
         private static bool PlayerHasKey(string keyId)
         {
-            if (Time.time - _keyCacheTime >= KeyCacheRefreshInterval)
-            {
-                _keyCacheTime = Time.time;
-                _keyCache = ScanOwnedKeyIds();
-            }
-
             return _keyCache.Contains(keyId);
         }
 
-        private static HashSet<string> ScanOwnedKeyIds()
+        private static void RefreshOwnedKeyIds()
         {
+            _keyCache.Clear();
+
             var player = GameUtils.GetMainPlayer();
             var equipment = player?.Inventory?.Equipment;
             if (equipment is null)
             {
-                return new HashSet<string>();
+                return;
             }
 
-            return equipment.GetAllItems().ToSystemList().Select(i => i.StringTemplateId).ToHashSet();
+            foreach (var item in equipment.GetAllItems())
+            {
+                _keyCache.Add(item.StringTemplateId);
+            }
         }
     }
 }

@@ -32,15 +32,6 @@ namespace SPTMap.DynamicMarkers
         // calls after that are harmless no-ops.
         private bool _populated;
 
-        // some extracts (e.g. a train extract) are only isActiveAndEnabled during a raid-time
-        // window - filtered out of the scan at raid start like any other still-closed extract, but
-        // unlike a merely-closed one (which stays in the dictionary and gets live status updates
-        // via OnStatusChanged) it never even enters _markers, so it needs a periodic rescan to pick
-        // it up once the engine activates it mid-raid rather than relying on _populated's one-shot
-        // retry-until-first-found.
-        private const float RescanIntervalSeconds = 5f;
-        private float _rescanAccumulator;
-
         public ExtractMarkerProvider()
         {
             _onStatusChanged = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<ExfiltrationPoint, EExfiltrationStatus>>(
@@ -50,9 +41,9 @@ namespace SPTMap.DynamicMarkers
         public void OnRaidStart()
         {
             // gated so the caller's every-frame retry (until the controller's point lists are
-            // populated at all) doesn't re-scan every frame forever afterwards - Tick below is
-            // what keeps catching newly-activated extracts (e.g. a train) once this has found at
-            // least the map's regular ones.
+            // populated at all) doesn't re-scan every frame forever afterwards - RefreshNow (called
+            // on the map-open edge) is what keeps catching newly-activated extracts (e.g. a train)
+            // once this has found at least the map's regular ones.
             if (_populated)
             {
                 return;
@@ -61,18 +52,17 @@ namespace SPTMap.DynamicMarkers
             ScanForExtracts();
         }
 
-        // called every frame from SPTMapController.Update while in a raid; only actually rescans
-        // once the interval elapses. AddMarker is idempotent so repeated calls are cheap no-ops
-        // for extracts already tracked.
-        public void Tick(float deltaTime)
+        // Called once on the frame the map is opened (see SPTMapController's peek-toggle edge) -
+        // this is the only place extracts refresh after the initial raid-start scan. Some extracts
+        // (e.g. a train extract) are only isActiveAndEnabled during a raid-time window - filtered
+        // out of the scan at raid start like any other still-closed extract, but unlike a merely-
+        // closed one (which stays in the dictionary and gets live status updates via
+        // OnStatusChanged) it never even enters _markers until a rescan finds it active. No
+        // periodic re-trigger even if the map stays open a long time - a delayed train-extract
+        // sighting matters far less than avoiding another source of periodic frame drops. Close and
+        // reopen the map to force a fresh look.
+        public void RefreshNow()
         {
-            _rescanAccumulator += deltaTime;
-            if (_rescanAccumulator < RescanIntervalSeconds)
-            {
-                return;
-            }
-
-            _rescanAccumulator = 0f;
             ScanForExtracts();
         }
 
@@ -120,7 +110,6 @@ namespace SPTMap.DynamicMarkers
 
             _markers.Clear();
             _populated = false;
-            _rescanAccumulator = 0f;
         }
 
         private void AddMarker(ExfiltrationPoint extract)

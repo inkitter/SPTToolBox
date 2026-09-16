@@ -51,9 +51,19 @@ namespace SPTMap.DynamicMarkers
             _rescanAccumulator = 0f;
         }
 
-        // called every frame from SPTMapController.Update while in a raid - the equipment-slot
-        // check itself is cheap (one dictionary/array lookup, no scene scan), only the
-        // GameWorld.LootList match runs on a timer while a drop is pending.
+        // Called once on the frame the map is opened (see SPTMapController's peek-toggle edge), so
+        // a pending drop isn't left waiting for the map-open interval before its LootList lookup
+        // runs. Equivalent to Tick(RescanIntervalSeconds) - always past the throttle.
+        public void RefreshNow()
+        {
+            Tick(RescanIntervalSeconds);
+        }
+
+        // Only called while the full map is open (see SPTMapController.UpdateInternal's
+        // _peekToggled gate), same as quest/wishlist/airdrop - the equipment-slot check itself is
+        // cheap (one dictionary/array lookup, no scene scan), but gating it too means a backpack
+        // dropped while the map is closed is only noticed once it's opened, not the instant it
+        // happens.
         public void Tick(float deltaTime)
         {
             var currentEquippedId = GetEquippedBackpackItemId();

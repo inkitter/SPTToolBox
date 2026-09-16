@@ -92,7 +92,17 @@ namespace SPTMap.Utils
                 {
                     var position = MathUtils.ConvertToMapPosition(worldPosition);
 
-                    if (seenPositions.Any(p => MathUtils.ApproxEquals(p.x, position.x) && MathUtils.ApproxEquals(p.y, position.y)))
+                    var alreadySeen = false;
+                    foreach (var seen in seenPositions)
+                    {
+                        if (MathUtils.ApproxEquals(seen.x, position.x) && MathUtils.ApproxEquals(seen.y, position.y))
+                        {
+                            alreadySeen = true;
+                            break;
+                        }
+                    }
+
+                    if (alreadySeen)
                     {
                         continue;
                     }
@@ -163,10 +173,13 @@ namespace SPTMap.Utils
             else if (condition.TryCast<ConditionExitName>() is { } exitCondition)
             {
                 var exfils = Singleton<GameWorld>.Instance.ExfiltrationController.ExfiltrationPoints;
-                var specifiedExit = exfils.FirstOrDefault(e => e.Settings.Name == exitCondition.exitName);
-                if (specifiedExit != null)
+                foreach (var exit in exfils)
                 {
-                    yield return specifiedExit.transform.position;
+                    if (exit.Settings.Name == exitCondition.exitName)
+                    {
+                        yield return exit.transform.position;
+                        break;
+                    }
                 }
             }
             else if (condition.TryCast<ConditionCounterCreator>() is { } conditionCreator)
@@ -191,12 +204,17 @@ namespace SPTMap.Utils
 
         private static IEnumerable<Vector3> GetPositionsForZoneId(string zoneId)
         {
-            var zones = _triggersWithIds?.Where(t => t.Id == zoneId) ?? Enumerable.Empty<TriggerWithId>();
             var any = false;
-            foreach (var zone in zones)
+            if (_triggersWithIds != null)
             {
-                any = true;
-                yield return zone.transform.position;
+                foreach (var trigger in _triggersWithIds)
+                {
+                    if (trigger.Id == zoneId)
+                    {
+                        any = true;
+                        yield return trigger.transform.position;
+                    }
+                }
             }
 
             if (!any && _warnedMissingZoneIds.Add(zoneId))
@@ -210,10 +228,17 @@ namespace SPTMap.Utils
         {
             foreach (var questItemId in questItemIds)
             {
-                var items = _questItems?.Where(i => i.TemplateId == questItemId) ?? Enumerable.Empty<LootItem>();
-                foreach (var item in items)
+                if (_questItems == null)
                 {
-                    yield return item.transform.position;
+                    continue;
+                }
+
+                foreach (var item in _questItems)
+                {
+                    if (item.TemplateId == questItemId)
+                    {
+                        yield return item.transform.position;
+                    }
                 }
             }
         }

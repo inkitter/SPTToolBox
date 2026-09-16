@@ -69,6 +69,10 @@ namespace SPTMap.DynamicMarkers
         // created.
         private readonly Dictionary<string, TrackedEntry> _entries = new();
         private readonly HashSet<string> _aliveScratch = new();
+        // reused across Poll calls instead of allocating a fresh List every poll (default 150ms
+        // interval, so this ran up to ~6-7 times/sec) just to safely snapshot _entries.Keys before
+        // RemoveEntry mutates the dictionary mid-iteration.
+        private readonly List<string> _trackedKeysScratch = new();
         private readonly Il2CppSystem.Action<IPlayer> _onPersonAdd;
         private float _pollAccumulator;
 
@@ -108,6 +112,8 @@ namespace SPTMap.DynamicMarkers
             }
 
             _entries.Clear();
+            _aliveScratch.Clear();
+            _trackedKeysScratch.Clear();
             _pollAccumulator = 0f;
         }
 
@@ -141,8 +147,9 @@ namespace SPTMap.DynamicMarkers
             }
 
             // copy keys first - RemoveEntry mutates _entries mid-iteration.
-            var tracked = new List<string>(_entries.Keys);
-            foreach (var profileId in tracked)
+            _trackedKeysScratch.Clear();
+            _trackedKeysScratch.AddRange(_entries.Keys);
+            foreach (var profileId in _trackedKeysScratch)
             {
                 var entry = _entries[profileId];
                 if (!entry.State.IsAlive)
