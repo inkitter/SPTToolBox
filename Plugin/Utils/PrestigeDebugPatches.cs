@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using EFT;
 using EFT.UI;
 using HarmonyLib;
@@ -84,12 +85,30 @@ namespace SPTMap.Utils
     // per-frame UI behavior - mirrors LoadPrestigeSettingsPatch from SPTushonka.Custom.
     internal static class PrestigeGlobalsLoadPatch
     {
-        [ThreadStatic]
-        private static EGameMode _savedMode;
-
+        // __state (per-call, from Harmony) instead of [ThreadStatic]: Load is async, and its
+        // continuation can resume on a different pooled thread than the one Prefix ran on, which
+        // would make a [ThreadStatic] save/restore read back the wrong (default) value.
         [HarmonyPrefix]
         [HarmonyPatch(typeof(TarkovApplication.GlobalsDataLoader), nameof(TarkovApplication.GlobalsDataLoader.Load))]
-        public static void Prefix(IEftSession __0)
+        public static void Prefix(IEftSession __0, out EGameMode __state)
+        {
+            var descriptor = Descriptor(__0);
+            __state = descriptor?.GameMode ?? EGameMode.Regular;
+            if (descriptor != null)
+            {
+                descriptor._GameMode_k__BackingField = EGameMode.Regular;
+            }
+        }
+
+        // Harmony's Postfix on a Task-returning method runs as soon as the synchronous part of
+        // Load returns the Task, not once that Task actually completes - restoring GameMode here
+        // directly would put the real mode back well before Load's own async work (which reads
+        // GameMode again past its first await) is done, leaving a window where the shared
+        // GameModeDescriptor is wrong for any other code reading it concurrently (e.g. matching
+        // start-up right after). Defer the restore to a ContinueWith on the real completion.
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(TarkovApplication.GlobalsDataLoader), nameof(TarkovApplication.GlobalsDataLoader.Load))]
+        public static void Postfix(IEftSession __0, Task __result, EGameMode __state)
         {
             var descriptor = Descriptor(__0);
             if (descriptor == null)
@@ -97,19 +116,15 @@ namespace SPTMap.Utils
                 return;
             }
 
-            _savedMode = descriptor.GameMode;
-            descriptor._GameMode_k__BackingField = EGameMode.Regular;
-        }
-
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(TarkovApplication.GlobalsDataLoader), nameof(TarkovApplication.GlobalsDataLoader.Load))]
-        public static void Postfix(IEftSession __0)
-        {
-            var descriptor = Descriptor(__0);
-            if (descriptor != null)
+            if (__result == null)
             {
-                descriptor._GameMode_k__BackingField = _savedMode;
+                descriptor._GameMode_k__BackingField = __state;
+                return;
             }
+
+            __result.ContinueWith(
+                _ => descriptor._GameMode_k__BackingField = __state,
+                TaskContinuationOptions.ExecuteSynchronously);
         }
 
         private static GameModeDescriptor Descriptor(IEftSession session)

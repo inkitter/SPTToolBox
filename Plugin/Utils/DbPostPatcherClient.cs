@@ -30,18 +30,14 @@ namespace SPTMap.Utils
         // game client itself already trusts this same local connection implicitly, so bypass cert
         // validation here too rather than trying to install/trust the cert for this one HttpClient.
         //
-        // Two callbacks, not one: HttpClientHandler.ServerCertificateCustomValidationCallback is
-        // the modern (SocketsHttpHandler) opt-out, but this plugin runs inside Unity's Mono
-        // runtime (not full .NET), whose HttpClient can fall back to a legacy TLS path
-        // (Mono.Btls) that only honors the older, process-wide ServicePointManager callback - a
-        // cert failure on that path surfaces as an unhelpful bare native error code (e.g. an
-        // exception whose Message is just "0xEF") rather than a normal .NET exception message.
-        // Setting both covers whichever path is actually taken.
-        static DbPostPatcherClient()
-        {
-            System.Net.ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
-        }
-
+        // Deliberately NOT also setting System.Net.ServicePointManager.ServerCertificateValidationCallback
+        // (a process-wide override, not scoped to this HttpClient): reassigning it invalidates Mono's
+        // pooled ServicePoint connections process-wide, which one observed a raid-entry failure right
+        // after it broke the game's own in-flight matching HTTPS connection (client-side "server busy"
+        // exception, no matching request ever reached the server log). This HttpClientHandler-scoped
+        // callback is enough for the SocketsHttpHandler path; if a Mono.Btls fallback path ever needs
+        // the process-wide one too, the F9 panel already surfaces a clear "backend not detected" ping
+        // failure instead of failing silently - that's a smaller cost than risking matchmaking again.
         private static readonly HttpClient Http = new HttpClient(
             new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true }
         )
