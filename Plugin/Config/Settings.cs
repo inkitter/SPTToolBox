@@ -31,7 +31,7 @@ namespace SPTMap.Config
         public static ConfigEntry<bool> ShowExtractLabels;
         public static ConfigEntry<bool> ShowTransitLabels;
         public static ConfigEntry<bool> ShowOtherMarkerLabels;
-        public static ConfigEntry<bool> ShowHiddenStashes;
+        public static ConfigEntry<bool> ShowLootableContainers;
         public static ConfigEntry<bool> ShowWishlist;
 
         public static ConfigEntry<float> EspDistance;
@@ -142,12 +142,14 @@ namespace SPTMap.Config
                 "Whether remaining markers that opt into it (airdrops, BTR, dropped backpack) show "
                 + "their name as a small always-on label instead of only on hover");
 
-            ShowHiddenStashes = config.Bind(
+            ShowLootableContainers = config.Bind(
                 MarkersTitle,
-                "Show hidden stashes",
+                "Show lootable containers",
                 false,
-                "Whether to render markers for known hidden stash containers (off by default - "
-                + "spoiler-y for players who don't want cache locations highlighted)");
+                "Whether to render markers for every lootable container on the map (ammo boxes, "
+                + "weapon crates, medbags, safes, etc. - not a curated subset). Off by default - "
+                + "spoiler-y for players who don't want loot locations highlighted, and one map can "
+                + "have dozens of these");
 
             ShowWishlist = config.Bind(
                 MarkersTitle,

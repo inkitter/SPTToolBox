@@ -45,7 +45,7 @@ namespace SPTMap.Utils
         private static readonly List<Popup> _popups = new();
 
         // keyed by ProfileId (stable string), not the Il2Cpp Player reference - see
-        // OtherPlayersMarkerProvider for why a Player-keyed dictionary is unreliable across
+        // UnitMarkerProvider for why a Player-keyed dictionary is unreliable across
         // different native list reads.
         private static readonly Dictionary<string, float> _lastTotalHealth = new();
 

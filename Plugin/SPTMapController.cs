@@ -86,15 +86,17 @@ namespace SPTMap
         // radius contained to the marker providers alone.
         private ExtractMarkerProvider _extractMarkerProvider;
         private DoorMarkerProvider _doorMarkerProvider;
-        private OtherPlayersMarkerProvider _otherPlayersMarkerProvider;
+        private UnitMarkerProvider _unitMarkerProvider;
         private QuestMarkerProvider _questMarkerProvider;
         private TransitMarkerProvider _transitMarkerProvider;
-        private SecretMarkerProvider _secretMarkerProvider;
-        private BTRMarkerProvider _btrMarkerProvider;
         private AirdropMarkerProvider _airdropMarkerProvider;
-        private WishlistMarkerProvider _wishlistMarkerProvider;
-        private HiddenStashMarkerProvider _hiddenStashMarkerProvider;
-        private BackpackMarkerProvider _backpackMarkerProvider;
+        private ItemMarkerProvider _itemMarkerProvider;
+        private LootableContainerMarkerProvider _lootableContainerMarkerProvider;
+
+        // Hard kill switches, independent of any ConfigEntry - flipping these to true must
+        // guarantee the corresponding provider's code never runs, not just default-off.
+        private const bool ItemMarkersDisabled = true;
+        private const bool LootableContainerMarkersDisabled = true;
 
         // reused snapshot buffer for DrawMarkers - a provider can add/remove markers mid-frame
         // (e.g. death during this same frame's event handling), so iterating MarkerManager.Markers
@@ -185,14 +187,11 @@ namespace SPTMap
 
                     try
                     {
-                        if (SPTMapConfig.ShowWishlist.Value)
-                        {
-                            _wishlistMarkerProvider?.RefreshNow();
-                        }
+                        _itemMarkerProvider?.RefreshNow();
                     }
                     catch (Exception e)
                     {
-                        Plugin.Log.LogError($"Wishlist marker refresh-on-open exception: {e}");
+                        Plugin.Log.LogError($"Item marker refresh-on-open exception: {e}");
                     }
 
                     try
@@ -202,15 +201,6 @@ namespace SPTMap
                     catch (Exception e)
                     {
                         Plugin.Log.LogError($"Airdrop marker refresh-on-open exception: {e}");
-                    }
-
-                    try
-                    {
-                        _backpackMarkerProvider?.RefreshNow();
-                    }
-                    catch (Exception e)
-                    {
-                        Plugin.Log.LogError($"Backpack marker refresh-on-open exception: {e}");
                     }
 
                     try
@@ -258,18 +248,17 @@ namespace SPTMap
                 TryRetryDoorMarkers();
                 TryRetryQuestMarkers();
                 TryRetryTransitMarkers();
-                TryRetrySecretMarkers();
-                TryRetryHiddenStashMarkers();
-                TryTickOtherPlayers();
-                TryTickBtrMarker();
+                TryRetryLootableContainerMarkers();
+                TryTickUnits();
 
                 // Quest/wishlist/airdrop/backpack/extract/door-key-ownership are all expensive
                 // rescans with no natural per-frame trigger - rather than re-running them on any
                 // periodic timer (even a long one) while the map is open, each is refreshed exactly
                 // once, on the frame the map is opened (see the PeekKey handler below calling each
                 // provider's RefreshNow()/SetMapOpen()). Staying open longer doesn't re-trigger
-                // them - close and reopen the map to force a fresh look. BTR/other-players are left
-                // as genuine per-frame polls since their whole point is live tracking.
+                // them - close and reopen the map to force a fresh look. Other-players (which now
+                // also covers the BTR, tracked as its turret gunner) are left as a genuine
+                // per-frame poll since their whole point is live tracking.
                 DoorMarkerProvider.SetMapOpen(_peekToggled);
             }
             _wasInRaid = inRaid;
@@ -325,8 +314,8 @@ namespace SPTMap
             MarkerManager.Clear();
             try
             {
-                _otherPlayersMarkerProvider ??= new OtherPlayersMarkerProvider();
-                _otherPlayersMarkerProvider.OnRaidStart();
+                _unitMarkerProvider ??= new UnitMarkerProvider();
+                _unitMarkerProvider.OnRaidStart();
             }
             catch (Exception e)
             {
@@ -375,26 +364,6 @@ namespace SPTMap
 
             try
             {
-                _secretMarkerProvider ??= new SecretMarkerProvider();
-                _secretMarkerProvider.OnRaidStart();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidStart secret marker setup exception: {e}");
-            }
-
-            try
-            {
-                _btrMarkerProvider ??= new BTRMarkerProvider();
-                _btrMarkerProvider.OnRaidStart();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidStart BTR marker setup exception: {e}");
-            }
-
-            try
-            {
                 _airdropMarkerProvider ??= new AirdropMarkerProvider();
                 _airdropMarkerProvider.OnRaidStart();
             }
@@ -405,38 +374,28 @@ namespace SPTMap
 
             try
             {
-                if (SPTMapConfig.ShowWishlist.Value)
+                if (!ItemMarkersDisabled)
                 {
-                    _wishlistMarkerProvider ??= new WishlistMarkerProvider();
-                    _wishlistMarkerProvider.OnRaidStart();
+                    _itemMarkerProvider ??= new ItemMarkerProvider();
+                    _itemMarkerProvider.OnRaidStart();
                 }
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"OnRaidStart wishlist marker setup exception: {e}");
+                Plugin.Log.LogError($"OnRaidStart item marker setup exception: {e}");
             }
 
             try
             {
-                if (SPTMapConfig.ShowHiddenStashes.Value)
+                if (!LootableContainerMarkersDisabled && SPTMapConfig.ShowLootableContainers.Value)
                 {
-                    _hiddenStashMarkerProvider ??= new HiddenStashMarkerProvider();
-                    _hiddenStashMarkerProvider.OnRaidStart();
+                    _lootableContainerMarkerProvider ??= new LootableContainerMarkerProvider();
+                    _lootableContainerMarkerProvider.OnRaidStart();
                 }
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"OnRaidStart hidden stash marker setup exception: {e}");
-            }
-
-            try
-            {
-                _backpackMarkerProvider ??= new BackpackMarkerProvider();
-                _backpackMarkerProvider.OnRaidStart();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidStart backpack marker setup exception: {e}");
+                Plugin.Log.LogError($"OnRaidStart lootable container marker setup exception: {e}");
             }
         }
 
@@ -452,42 +411,31 @@ namespace SPTMap
             }
         }
 
-        private void TryRetrySecretMarkers()
+        private void TryRetryLootableContainerMarkers()
         {
             try
             {
-                _secretMarkerProvider?.OnRaidStart();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"Secret marker retry exception: {e}");
-            }
-        }
-
-        private void TryRetryHiddenStashMarkers()
-        {
-            try
-            {
-                if (SPTMapConfig.ShowHiddenStashes.Value)
+                if (!LootableContainerMarkersDisabled && SPTMapConfig.ShowLootableContainers.Value)
                 {
-                    _hiddenStashMarkerProvider?.OnRaidStart();
+                    // lazily created here too, not just in the main OnRaidStart - if the setting
+                    // was off when the raid started, OnRaidStart's own block above never ran this
+                    // provider's ??=, so the field stays null forever and toggling the setting on
+                    // mid-raid (this retry loop runs every frame regardless) had nothing to
+                    // populate: a bare `?.OnRaidStart()` on a still-null field is a silent no-op.
+                    _lootableContainerMarkerProvider ??= new LootableContainerMarkerProvider();
+                    _lootableContainerMarkerProvider.OnRaidStart();
+                }
+                else
+                {
+                    // toggled off mid-raid: drop any markers already drawn and reset the provider's
+                    // populate state, so it does a fresh FindObjectsOfType scan (not a stale one) if
+                    // the setting gets flipped back on later in the same raid.
+                    _lootableContainerMarkerProvider?.OnRaidEnd();
                 }
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"Hidden stash marker retry exception: {e}");
-            }
-        }
-
-        private void TryTickBtrMarker()
-        {
-            try
-            {
-                _btrMarkerProvider?.Tick();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"BTR marker poll exception: {e}");
+                Plugin.Log.LogError($"Lootable container marker retry exception: {e}");
             }
         }
 
@@ -527,15 +475,15 @@ namespace SPTMap
             }
         }
 
-        private void TryTickOtherPlayers()
+        private void TryTickUnits()
         {
             try
             {
-                _otherPlayersMarkerProvider?.Tick(Time.deltaTime);
+                _unitMarkerProvider?.Tick(Time.deltaTime);
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"Other-players marker poll exception: {e}");
+                Plugin.Log.LogError($"Unit marker poll exception: {e}");
             }
         }
 
@@ -543,7 +491,7 @@ namespace SPTMap
         {
             try
             {
-                _otherPlayersMarkerProvider?.OnRaidEnd();
+                _unitMarkerProvider?.OnRaidEnd();
             }
             catch (Exception e)
             {
@@ -586,23 +534,6 @@ namespace SPTMap
                 Plugin.Log.LogError($"OnRaidEnd transit marker teardown exception: {e}");
             }
 
-            try
-            {
-                _secretMarkerProvider?.OnRaidEnd();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidEnd secret marker teardown exception: {e}");
-            }
-
-            try
-            {
-                _btrMarkerProvider?.OnRaidEnd();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidEnd BTR marker teardown exception: {e}");
-            }
 
             try
             {
@@ -615,29 +546,20 @@ namespace SPTMap
 
             try
             {
-                _wishlistMarkerProvider?.OnRaidEnd();
+                _itemMarkerProvider?.OnRaidEnd();
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"OnRaidEnd wishlist marker teardown exception: {e}");
+                Plugin.Log.LogError($"OnRaidEnd item marker teardown exception: {e}");
             }
 
             try
             {
-                _hiddenStashMarkerProvider?.OnRaidEnd();
+                _lootableContainerMarkerProvider?.OnRaidEnd();
             }
             catch (Exception e)
             {
-                Plugin.Log.LogError($"OnRaidEnd hidden stash marker teardown exception: {e}");
-            }
-
-            try
-            {
-                _backpackMarkerProvider?.OnRaidEnd();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidEnd backpack marker teardown exception: {e}");
+                Plugin.Log.LogError($"OnRaidEnd lootable container marker teardown exception: {e}");
             }
 
             try
@@ -1186,16 +1108,16 @@ namespace SPTMap
         }
 
         // routes a marker's always-on-label toggle by its Category string (set by the owning
-        // provider - see OtherPlayersMarkerProvider/ExtractMarkerProvider/SecretMarkerProvider/
-        // TransitMarkerProvider for the exact category strings) rather than a single blanket
-        // setting, so e.g. enemy names can stay on while teammate names are hidden.
+        // provider - see UnitMarkerProvider/ExtractMarkerProvider/TransitMarkerProvider for
+        // the exact category strings) rather than a single blanket setting, so e.g. enemy names can
+        // stay on while teammate names are hidden.
         private static bool IsLabelCategoryEnabled(string category)
         {
             return category switch
             {
                 "Friendly Player" => SPTMapConfig.ShowFriendlyPlayerLabels.Value,
                 "Enemy Player" or "Scav" or "Boss" => SPTMapConfig.ShowEnemyPlayerLabels.Value,
-                "Extract" or "Secret Extract" => SPTMapConfig.ShowExtractLabels.Value,
+                "Extract" => SPTMapConfig.ShowExtractLabels.Value,
                 "Transit" => SPTMapConfig.ShowTransitLabels.Value,
                 _ => SPTMapConfig.ShowOtherMarkerLabels.Value,
             };

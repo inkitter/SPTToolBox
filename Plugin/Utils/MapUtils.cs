@@ -76,6 +76,9 @@ namespace SPTMap.Utils
         // icons etc) that aren't tied to a map def.
         public static Texture2D GetTextureByPath(string relativePath)
         {
+            if (string.IsNullOrEmpty(relativePath))
+                return null;
+
             if (Textures.TryGetValue(relativePath, out var texture) && texture != null)
                 return texture;
 

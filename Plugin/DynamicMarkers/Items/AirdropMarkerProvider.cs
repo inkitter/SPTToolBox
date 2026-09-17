@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Comfort.Common;
+using EFT;
 using EFT.SynchronizableObjects;
 using SPTMap.Data;
 using SPTMap.Utils;
@@ -8,12 +10,14 @@ namespace SPTMap.DynamicMarkers
 {
     // Airdrop crates. The old SPT-DynamicMaps project only found these via a Harmony patch on
     // ClientAirDrop.CloseParachute (i.e. only once the crate had already landed). This instead
-    // does a live Object.FindObjectsOfType<AirdropSynchronizableObject> scan on a short timer -
-    // no patch to maintain, and the sync object exists in the scene (and is found by this scan)
-    // as soon as the drop starts, not just once it lands, so a crate still under its parachute
-    // shows up too. NOT yet verified in-game whether the object is actually present/positioned
-    // correctly mid-flight vs. only appearing on landing - check this first if markers seem to
-    // appear late.
+    // reads GameWorld.SynchronizableObjectLogicProcessor.GetSynchronizableObjects() - the game's
+    // own maintained list of every active synchronizable object (airdrops included), confirmed via
+    // decompile - rather than a live Object.FindObjectsOfType<AirdropSynchronizableObject> scene
+    // scan, which was a measurable per-call hitch (see git history/LootableContainerMarkerProvider for
+    // the same class of problem). No patch to maintain, and the sync object is in this list as soon
+    // as the drop starts, not just once it lands, so a crate still under its parachute shows up
+    // too. NOT yet verified in-game whether the object is actually present/positioned correctly
+    // mid-flight vs. only appearing on landing - check this first if markers seem to appear late.
     public class AirdropMarkerProvider
     {
         private const string Category = "Airdrop";
@@ -56,16 +60,22 @@ namespace SPTMap.DynamicMarkers
 
         private void Rescan()
         {
-            var found = Object.FindObjectsOfType<AirdropSynchronizableObject>();
-            if (found == null)
+            // GameWorld/SynchronizableObjectLogicProcessor are UnityEngine.Object-derived - explicit
+            // ifs instead of ?., see git history/memory ("?./?? bypasses Unity's fake-null override").
+            var gameWorld = Singleton<GameWorld>.Instance;
+            if (gameWorld == null || gameWorld.SynchronizableObjectLogicProcessor == null)
             {
                 return;
             }
 
             _foundScratch.Clear();
-            foreach (var airdrop in found)
+            foreach (var syncObject in gameWorld.SynchronizableObjectLogicProcessor.GetSynchronizableObjects())
             {
-                _foundScratch.Add(airdrop);
+                var airdrop = syncObject.TryCast<AirdropSynchronizableObject>();
+                if (airdrop != null)
+                {
+                    _foundScratch.Add(airdrop);
+                }
             }
 
             _staleScratch.Clear();
@@ -96,7 +106,11 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
-            var worldTransform = airdrop.transform;
+            // Position is snapshotted once here rather than read from a live Transform every OnGUI
+            // frame - a crate only needs to be right as of the last Rescan() (map-open or
+            // raid-start), not tracked in real time, and a snapshot can't crash on a Transform the
+            // engine destroys later (crate despawns/gets removed) between rescans.
+            var worldPos = airdrop.transform.position;
             var marker = new MapMarker
             {
                 Category = Category,
@@ -104,8 +118,8 @@ namespace SPTMap.DynamicMarkers
                 Text = "Airdrop",
                 Color = MarkerColor,
                 ShowLabel = true,
-                GetPosition = () => MathUtils.ConvertToMapPosition(worldTransform.position),
-                GetWorldPosition = () => worldTransform.position,
+                GetPosition = () => MathUtils.ConvertToMapPosition(worldPos),
+                GetWorldPosition = () => worldPos,
             };
 
             _markers[airdrop] = marker;

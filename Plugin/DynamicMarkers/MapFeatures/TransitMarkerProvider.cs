@@ -50,7 +50,7 @@ namespace SPTMap.DynamicMarkers
             // raid-random spawn, so an empty result here means this map genuinely has none, not
             // "not loaded yet". Gating on points.Length would re-run this full-scene
             // FindObjectsOfType scan every single frame for the rest of the raid on those maps
-            // (see git history: same bug tanked FPS via HiddenStashMarkerProvider).
+            // (see git history: same bug tanked FPS via LootableContainerMarkerProvider).
             _populated = true;
         }
 
@@ -86,7 +86,10 @@ namespace SPTMap.DynamicMarkers
                 ShowLabel = true,
                 GetPosition = () => pos,
                 GetWorldPosition = () => worldPos,
-                GetColor = () => point.Enabled && point.IsActive ? UsableColor : UnusableColor,
+                // point is a UnityEngine.Object read live every OnGUI frame here (its usable state
+                // can change mid-raid) - unlike position, this can't be snapshotted once, so guard
+                // against it being destroyed instead.
+                GetColor = () => point != null && point.Enabled && point.IsActive ? UsableColor : UnusableColor,
             };
 
             _markers[point] = marker;

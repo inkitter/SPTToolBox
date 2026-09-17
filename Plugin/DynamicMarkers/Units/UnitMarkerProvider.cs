@@ -11,30 +11,36 @@ using UnityEngine;
 namespace SPTMap.DynamicMarkers
 {
     // Ported from the old SPT-DynamicMaps project's OtherPlayersMarkerProvider, merged with what
-    // used to be a separate CorpseMarkerProvider. Each tracked player gets its own small mutable
-    // TrackedPlayerState snapshot, refreshed on a configurable timer (Settings.OtherPlayersPollIntervalMs)
-    // via Tick/Poll rather than read live off the Il2Cpp Player object every draw. This used to be
-    // event-driven (Player.OnDead + GameWorld.UnregisterPlayer), but GameWorld unregisters a dying
-    // player before OnDead's postfix runs in practice, so the two events raced and a death could be
-    // missed entirely (see git history). Polling our own state sidesteps that: death is just
-    // "IsAlive read as false this poll", independent of which engine event fires when or in what
-    // order, and a marker going stale is bounded by one poll interval instead of an unbounded miss.
-    public class OtherPlayersMarkerProvider
+    // used to be a separate CorpseMarkerProvider, and now also covers the BTR (its turret gunner is
+    // an invincible bot Player - see TryAddMarker) since that's just another live-tracked unit, not
+    // a different problem - no reason for a separate BTRMarkerProvider. Each tracked player gets its
+    // own small mutable TrackedPlayerState snapshot, refreshed on a configurable timer
+    // (Settings.OtherPlayersPollIntervalMs) via Tick/Poll rather than read live off the Il2Cpp
+    // Player object every draw. This used to be event-driven (Player.OnDead +
+    // GameWorld.UnregisterPlayer), but GameWorld unregisters a dying player before OnDead's postfix
+    // runs in practice, so the two events raced and a death could be missed entirely (see git
+    // history). Polling our own state sidesteps that: death is just "IsAlive read as false this
+    // poll", independent of which engine event fires when or in what order, and a marker going
+    // stale is bounded by one poll interval instead of an unbounded miss.
+    public class UnitMarkerProvider
     {
         private const string ArrowImagePath = "Markers/arrow.png";
         private const string StarImagePath = "Markers/star.png";
         private const string SkullImagePath = "Markers/skull.png";
+        private const string BtrImagePath = "Markers/btr.png";
 
         private const string FriendlyCategory = "Friendly Player";
         private const string EnemyCategory = "Enemy Player";
         private const string ScavCategory = "Scav";
         private const string BossCategory = "Boss";
+        private const string BtrCategory = "BTR";
 
         private static readonly Color FriendlyColor = Color.green;
         private static readonly Color PmcBearColor = Color.red;
         private static readonly Color PmcUsecColor = Color.yellow;
         private static readonly Color ScavColor = new(1f, 0.55f, 0f);
         private static readonly Color BossColor = new(0.6f, 0f, 0.8f);
+        private static readonly Color BtrColor = Color.white;
 
         private static readonly Color FriendlyCorpseColor = Color.green;
         private static readonly Color KilledCorpseColor = Color.Lerp(Color.green, Color.white, 0.5f);
@@ -76,7 +82,7 @@ namespace SPTMap.DynamicMarkers
         private readonly Il2CppSystem.Action<IPlayer> _onPersonAdd;
         private float _pollAccumulator;
 
-        public OtherPlayersMarkerProvider()
+        public UnitMarkerProvider()
         {
             _onPersonAdd = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<IPlayer>>(new Action<IPlayer>(TryAddMarker));
         }
@@ -217,7 +223,7 @@ namespace SPTMap.DynamicMarkers
         private void TryAddMarker(IPlayer iPlayer)
         {
             var player = iPlayer.TryCast<Player>();
-            if (player is null || player.IsYourPlayer || player.IsHeadlessClient() || player.IsBTRShooter() || _entries.ContainsKey(player.ProfileId))
+            if (player is null || player.IsYourPlayer || player.IsHeadlessClient() || _entries.ContainsKey(player.ProfileId))
             {
                 return;
             }
@@ -229,8 +235,20 @@ namespace SPTMap.DynamicMarkers
             string category;
             string aliveImagePath;
             Color aliveColor;
+            string text = player.Profile?.Info?.Nickname;
 
-            if (player.IsGroupedWithMainPlayer())
+            // the BTR's turret gunner is an invincible bot Player - shown as the vehicle itself
+            // rather than as an enemy, reusing this class's existing position/facing tracking
+            // instead of the old separate BTRMarkerProvider (which read BTRView.transform directly
+            // and showed a visibly wrong facing).
+            if (player.IsBTRShooter())
+            {
+                category = BtrCategory;
+                aliveImagePath = BtrImagePath;
+                aliveColor = BtrColor;
+                text = "BTR";
+            }
+            else if (player.IsGroupedWithMainPlayer())
             {
                 category = FriendlyCategory;
                 aliveImagePath = ArrowImagePath;
@@ -292,7 +310,7 @@ namespace SPTMap.DynamicMarkers
             var marker = new MapMarker
             {
                 Category = category,
-                Text = player.Profile?.Info?.Nickname,
+                Text = text,
                 ShowLabel = true,
                 GetPosition = () => state.Position,
                 GetWorldPosition = () => state.WorldPosition,

@@ -10,6 +10,15 @@ namespace SPTMap.DynamicMarkers
     // Locked doors, discovered live from the raid scene (EFT.Interactive.Door) rather than baked
     // per-map data - unlike extracts, doors are ordinary level geometry present in the scene for
     // the whole raid, so a live scan is enough (no corpse-style timing gotcha either).
+    //
+    // Tried GameWorld.WorldInteractiveObjects() instead of a full-scene
+    // Object.FindObjectsOfType<Door>() scan (Door's own base type is WorldInteractiveObject,
+    // confirmed via decompile) - reverted after confirming in-game that it throws a
+    // NullReferenceException every single call when invoked this early (raid-start retry window),
+    // spamming the log every frame since OnRaidStart's own bounded try/catch keeps calling it until
+    // _populated ever gets set. A decompiled interop stub only proves the API's signature exists,
+    // not that it's safe to call at this point in the raid lifecycle - don't repeat this without an
+    // in-game check first.
     public class DoorMarkerProvider
     {
         private const string Category = "Locked Door";
@@ -34,19 +43,22 @@ namespace SPTMap.DynamicMarkers
             }
 
             var doors = Object.FindObjectsOfType<Door>();
-            if (doors == null || doors.Length == 0)
+            if (doors != null)
             {
-                return;
-            }
-
-            foreach (var door in doors)
-            {
-                if (!string.IsNullOrEmpty(door.KeyId))
+                foreach (var door in doors)
                 {
-                    AddMarker(door);
+                    if (!string.IsNullOrEmpty(door.KeyId))
+                    {
+                        AddMarker(door);
+                    }
                 }
             }
 
+            // stop retrying regardless of count, same fix as TransitMarkerProvider/
+            // LootableContainerMarkerProvider - Door is static level geometry, so an empty result here
+            // means this map/raid genuinely has no locked doors, not "not loaded yet". Previously
+            // this only set _populated on a non-empty scan, so a map with zero locked doors re-ran
+            // this scan every frame for the rest of the raid.
             _populated = true;
         }
 

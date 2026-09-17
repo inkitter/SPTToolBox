@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Comfort.Common;
+using EFT;
 using EFT.Quests;
 using EFT.UI;
 using UnityEngine;
@@ -22,7 +24,7 @@ namespace SPTMap.Utils
     {
         private const KeyCode ToggleKey = KeyCode.F9;
         private static readonly string[] TabLabels = { "Incomplete", "Not started", "Completed" };
-        private static readonly string[] PageLabels = { "Quest", "Item", "Prestige", "Character" };
+        private static readonly string[] PageLabels = { "Quest", "Item", "Prestige", "Character", "Airdrop" };
 
         private static bool _visible;
         private static int _page;
@@ -162,6 +164,9 @@ namespace SPTMap.Utils
                     break;
                 case 3:
                     DrawCharacterSection();
+                    break;
+                case 4:
+                    DrawAirdropSection();
                     break;
                 default:
                     DrawQuestPage();
@@ -317,6 +322,72 @@ namespace SPTMap.Utils
                 PrestigeDebugPatches.ClickObtainPrestige();
             }
             GUILayout.EndHorizontal();
+        }
+
+        // Calls AirdropManager.AirdropEvent directly - the same public engine entry point a real
+        // flare/call-in button ends up invoking (its buttonClickLastTime param matches that use:
+        // a debounce timestamp, not something specific to the flare item itself). Exists because
+        // the natural triggers (PlaneAirdropChance/StartMin/StartMax in a map's base.json, or the
+        // in-raid flare item) are both slow/low-probability enough to make testing airdrop markers
+        // impractical. EXPERIMENTAL - only verified to compile against the decompiled interop
+        // stub, not yet confirmed in-game to actually spawn a crate; if it silently does nothing,
+        // check the log for what AirdropEvent's native side actually requires (e.g. a signal
+        // location/target position it may need set first).
+        private static string _airdropStatus = "";
+
+        private static void DrawAirdropSection()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Airdrop (experimental - see code comment)", HeaderStyle);
+            GUILayout.Label(
+                "Calls AirdropManager.AirdropEvent directly instead of waiting on the map's "
+                + "PlaneAirdropChance timer or using a flare in-raid. Not yet confirmed in-game.",
+                DescriptionStyle);
+
+            if (GUILayout.Button("Force Airdrop", GUILayout.Width(160f)))
+            {
+                TryForceAirdrop();
+            }
+
+            if (!string.IsNullOrEmpty(_airdropStatus))
+            {
+                GUILayout.Label(_airdropStatus, DescriptionStyle);
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        private static void TryForceAirdrop()
+        {
+            try
+            {
+                // GameWorld is a UnityEngine.Object-derived (MonoBehaviour) - explicit ifs instead
+                // of ?., see git history/memory ("?./?? bypasses Unity's fake-null override").
+                // AirdropManager/SynchronizableObjectLogicProcessor are plain Il2CppSystem.Object,
+                // not UnityEngine.Object, so ?. on those hops is fine.
+                var gameWorld = Singleton<GameWorld>.Instance;
+                if (gameWorld == null)
+                {
+                    _airdropStatus = "No GameWorld - not in a raid.";
+                    return;
+                }
+
+                var airdropManager = gameWorld.SynchronizableObjectLogicProcessor?.AirdropManager;
+                if (airdropManager == null)
+                {
+                    _airdropStatus = "No AirdropManager available on this map/raid.";
+                    return;
+                }
+
+                airdropManager.AirdropEvent(0L);
+                _airdropStatus = $"AirdropEvent invoked at {DateTime.Now:HH:mm:ss} - watch the map/sky.";
+                Plugin.Log.LogInfo("QuestDebugPanel: AirdropManager.AirdropEvent invoked (debug force-airdrop)");
+            }
+            catch (Exception e)
+            {
+                _airdropStatus = $"AirdropEvent threw: {e.Message}";
+                Plugin.Log.LogError($"QuestDebugPanel: force-airdrop threw: {e}");
+            }
         }
 
         // Writes body-part max HP / hydration / energy / temperature / skill progress back to the

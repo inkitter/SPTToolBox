@@ -126,7 +126,7 @@ namespace SPTMap.Utils
         // wrapped as the declared element type (Condition), not the actual runtime subtype, so a
         // C# `switch`/`is` pattern match against ConditionZone/ConditionVisitPlace/etc. never
         // matches. TryCast<T> against the underlying il2cpp object is required instead - see
-        // OtherPlayersMarkerProvider for the same pattern.
+        // UnitMarkerProvider for the same pattern.
         private static IEnumerable<Vector3> GetPositionsForCondition(Condition condition)
         {
             if (condition.TryCast<ConditionZone>() is { } zoneCondition)

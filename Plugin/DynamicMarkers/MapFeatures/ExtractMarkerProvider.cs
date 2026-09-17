@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
@@ -13,6 +12,10 @@ namespace SPTMap.DynamicMarkers
 {
     // Ported from the old SPT-DynamicMaps project's ExtractMarkerProvider, trimmed to drop the
     // config/Settings dependency SPTMap doesn't have yet - colors are hardcoded consts instead.
+    // Covers both regular and secret extracts as one uniform "extract point" - to the player both
+    // just mean "red = can't use it right now, green = can", so there's no reason to track them as
+    // separate types/categories; SecretExfiltrationPoint is itself an ExfiltrationPoint, so a
+    // single Dictionary<ExfiltrationPoint, MapMarker> covers both without a cast anywhere.
     public class ExtractMarkerProvider
     {
         private const string Category = "Extract";
@@ -58,9 +61,9 @@ namespace SPTMap.DynamicMarkers
         // out of the scan at raid start like any other still-closed extract, but unlike a merely-
         // closed one (which stays in the dictionary and gets live status updates via
         // OnStatusChanged) it never even enters _markers until a rescan finds it active. No
-        // periodic re-trigger even if the map stays open a long time - a delayed train-extract
-        // sighting matters far less than avoiding another source of periodic frame drops. Close and
-        // reopen the map to force a fresh look.
+        // periodic re-trigger even if the map stays open a long time - a delayed extract sighting
+        // matters far less than avoiding another source of periodic frame drops. Close and reopen
+        // the map to force a fresh look.
         public void RefreshNow()
         {
             ScanForExtracts();
@@ -76,22 +79,27 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
+            // regular extracts need a resolved player (InfiltrationMatch checks side/group) -
+            // secret extracts have no such filter, so they're scanned regardless.
             var player = GameUtils.GetMainPlayer();
-            if (player == null)
+            if (player != null)
             {
-                return;
+                IEnumerable<ExfiltrationPoint> extracts = GameUtils.IsScavRaid()
+                    ? gameWorld.ExfiltrationController.ScavExfiltrationPoints
+                    : gameWorld.ExfiltrationController.ExfiltrationPoints;
+
+                foreach (var extract in extracts)
+                {
+                    if (extract.isActiveAndEnabled && extract.InfiltrationMatch(player))
+                    {
+                        AddMarker(extract);
+                    }
+                }
             }
 
-            IEnumerable<ExfiltrationPoint> extracts = GameUtils.IsScavRaid()
-                ? gameWorld.ExfiltrationController.ScavExfiltrationPoints
-                : gameWorld.ExfiltrationController.ExfiltrationPoints;
-
-            foreach (var extract in extracts)
+            foreach (var secret in gameWorld.ExfiltrationController.SecretExfiltrationPoints)
             {
-                if (extract.isActiveAndEnabled && extract.InfiltrationMatch(player))
-                {
-                    AddMarker(extract);
-                }
+                AddMarker(secret);
             }
 
             if (_markers.Count > 0)
@@ -102,7 +110,15 @@ namespace SPTMap.DynamicMarkers
 
         public void OnRaidEnd()
         {
-            foreach (var extract in _markers.Keys.ToList())
+            // copy keys first - unsubscribing/removing while enumerating the dictionary itself
+            // would throw.
+            var extracts = new List<ExfiltrationPoint>(_markers.Count);
+            foreach (var extract in _markers.Keys)
+            {
+                extracts.Add(extract);
+            }
+
+            foreach (var extract in extracts)
             {
                 extract.OnStatusChanged -= _onStatusChanged;
                 MarkerManager.Remove(_markers[extract]);
