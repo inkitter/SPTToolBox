@@ -134,6 +134,65 @@ namespace SPTMap.Utils
             return true;
         }
 
+        // same rationale as AiInfoState/BodyPartHealthState below: avoids a fresh string per
+        // visible enemy on every OnGUI pass when the underlying int hasn't changed since last
+        // frame (chest HP only changes on a hit; rounded distance often holds steady too).
+        private struct HpTextCache
+        {
+            public int Current, Max;
+            public string Text;
+            public bool Initialized;
+        }
+
+        private struct DistanceTextCache
+        {
+            public int RoundedDistance;
+            public string Text;
+            public bool Initialized;
+        }
+
+        private static readonly Dictionary<string, HpTextCache> _hpTextCache = new();
+        private static readonly Dictionary<string, DistanceTextCache> _distanceTextCache = new();
+
+        private static string GetCachedHpText(string profileId, int current, int max)
+        {
+            _hpTextCache.TryGetValue(profileId, out var cached);
+            if (!cached.Initialized || cached.Current != current || cached.Max != max)
+            {
+                cached.Current = current;
+                cached.Max = max;
+                cached.Text = $"{current}/{max}";
+                cached.Initialized = true;
+                _hpTextCache[profileId] = cached;
+            }
+
+            return cached.Text;
+        }
+
+        private static string GetCachedDistanceText(string profileId, int roundedDistance)
+        {
+            _distanceTextCache.TryGetValue(profileId, out var cached);
+            if (!cached.Initialized || cached.RoundedDistance != roundedDistance)
+            {
+                cached.RoundedDistance = roundedDistance;
+                cached.Text = $"{roundedDistance}m";
+                cached.Initialized = true;
+                _distanceTextCache[profileId] = cached;
+            }
+
+            return cached.Text;
+        }
+
+        // clears every per-bot text cache above - stale ProfileId entries would otherwise sit
+        // in these dictionaries for the rest of the session across raids.
+        public static void OnRaidEnd()
+        {
+            _hpTextCache.Clear();
+            _distanceTextCache.Clear();
+            _aiInfoCache.Clear();
+            _bodyPartHealthCache.Clear();
+        }
+
         private static string _lastUnavailableReason;
 
         private static void LogUnavailableOnce(string reason)
@@ -170,6 +229,8 @@ namespace SPTMap.Utils
             if (isBoss && !Settings.ShowBoss.Value) return false;
             if (!isBoss && isPmc && !Settings.ShowPmc.Value) return false;
             if (!isBoss && isScav && !Settings.ShowScav.Value) return false;
+
+            var profileId = player.ProfileId;
 
             // legs aren't always populated in MainParts (varies by bot/perception state) - only
             // head+body are load-bearing; fall back to a fixed offset below the chest for the feet
@@ -241,18 +302,18 @@ namespace SPTMap.Utils
 
             if (Settings.ShowAiInfo.Value)
             {
-                DrawAiInfo(player, boxRect, color);
+                DrawAiInfo(player, profileId, boxRect, color);
             }
 
             if (Settings.ShowBodyPartHealth.Value)
             {
-                DrawBodyPartHealthBreakdown(player, boxRect, color);
+                DrawBodyPartHealthBreakdown(player, profileId, boxRect, color);
             }
             else
             {
                 var chest = player.HealthController.GetBodyPartHealth(EBodyPart.Chest, false);
-                var hpText = $"{Mathf.CeilToInt(chest.Current)}/{Mathf.CeilToInt(chest.Maximum)}";
-                var distanceText = $"{distance:0}m";
+                var hpText = GetCachedHpText(profileId, Mathf.CeilToInt(chest.Current), Mathf.CeilToInt(chest.Maximum));
+                var distanceText = GetCachedDistanceText(profileId, Mathf.RoundToInt(distance));
 
                 // the label is wider than most enemy boxes on screen (especially at range) - size
                 // it independently of boxRect.width and center it on the box, rather than
@@ -273,13 +334,29 @@ namespace SPTMap.Utils
         private const float AiInfoWidth = 150f;
         private const float AiInfoHeight = 14f;
 
+        // rebuilding this every OnGUI pass (Layout + Repaint, so twice per frame) for every
+        // visible bot allocated a fresh List<string> + string.Join result even though the three
+        // components rarely change frame-to-frame (difficulty is fixed for the raid, status/layer
+        // only flip on AI state transitions) - a steady per-frame GC source contributing to the
+        // camera/walk-bob micro-stutter reported 2026-09-17. Cached per bot (keyed by ProfileId),
+        // rebuilt only when a component's string actually differs from last frame.
+        private struct AiInfoState
+        {
+            public string Difficulty;
+            public string Status;
+            public string Layer;
+            public string Text;
+        }
+
+        private static readonly Dictionary<string, AiInfoState> _aiInfoCache = new();
+
         // real players have no AIData.BotOwner - this is a no-op for them, only bots carry the
         // difficulty/behavior state this reads. BotOwner itself is a MonoBehaviour
         // (UnityEngine.Object-derived), so it gets the explicit `== null` treatment rather than
         // `?.` (see CLAUDE.md/memory) - everything hanging off it here (BotMemory, BotSettings,
         // EnemyInfo, StandartBotBrain) is a plain Il2CppSystem.Object though, so `?.` is fine on
         // those.
-        private static void DrawAiInfo(Player player, Rect boxRect, Color color)
+        private static void DrawAiInfo(Player player, string profileId, Rect boxRect, Color color)
         {
             var aiData = player.AIData;
             if (aiData == null || !aiData.IsAI)
@@ -294,24 +371,33 @@ namespace SPTMap.Utils
             }
 
             var difficulty = bot.Settings?._difficulty;
+            var difficultyStr = difficulty.HasValue ? difficulty.Value.ToString() : null;
             var status = ResolveAiStatus(bot);
             var layer = bot.Brain?.ActiveLayerName();
 
-            var parts = new List<string>(3);
-            if (difficulty.HasValue) parts.Add(difficulty.Value.ToString());
-            if (!string.IsNullOrEmpty(status)) parts.Add(status);
-            if (!string.IsNullOrEmpty(layer)) parts.Add(layer);
-
-            if (parts.Count == 0)
+            if (string.IsNullOrEmpty(difficultyStr) && string.IsNullOrEmpty(status) && string.IsNullOrEmpty(layer))
             {
                 return;
             }
 
-            var text = string.Join(" / ", parts);
+            _aiInfoCache.TryGetValue(profileId, out var cached);
+            if (cached.Text == null || cached.Difficulty != difficultyStr || cached.Status != status || cached.Layer != layer)
+            {
+                var parts = new List<string>(3);
+                if (!string.IsNullOrEmpty(difficultyStr)) parts.Add(difficultyStr);
+                if (!string.IsNullOrEmpty(status)) parts.Add(status);
+                if (!string.IsNullOrEmpty(layer)) parts.Add(layer);
+
+                cached.Difficulty = difficultyStr;
+                cached.Status = status;
+                cached.Layer = layer;
+                cached.Text = string.Join(" / ", parts);
+                _aiInfoCache[profileId] = cached;
+            }
 
             var prevColor = GUI.color;
             GUI.color = color;
-            GUI.Label(new Rect(boxRect.x + boxRect.width / 2f - AiInfoWidth / 2f, boxRect.yMax + 2f, AiInfoWidth, AiInfoHeight), text, HpLabelStyle);
+            GUI.Label(new Rect(boxRect.x + boxRect.width / 2f - AiInfoWidth / 2f, boxRect.yMax + 2f, AiInfoWidth, AiInfoHeight), cached.Text, HpLabelStyle);
             GUI.color = prevColor;
         }
 
@@ -348,28 +434,58 @@ namespace SPTMap.Utils
         // label glued to the same silhouette instead of drifting independently. Matches the
         // requested layout: head above the box, chest upper-inside, stomach lower-inside, arms on
         // the left/right edges, legs at the bottom corners.
-        private static void DrawBodyPartHealthBreakdown(Player player, Rect boxRect, Color color)
+        // one cached int + string per tracked body part per bot - .ToString() (and the closure
+        // that used to wrap health) only reruns when that part's HP actually changed since last
+        // frame, instead of every OnGUI pass. See AiInfoState comment above for why this matters.
+        private struct BodyPartHealthState
+        {
+            public int Head, Chest, Stomach, LeftArm, RightArm, LeftLeg, RightLeg;
+            public string HeadText, ChestText, StomachText, LeftArmText, RightArmText, LeftLegText, RightLegText;
+            public bool Initialized;
+        }
+
+        private static readonly Dictionary<string, BodyPartHealthState> _bodyPartHealthCache = new();
+
+        private static void DrawBodyPartHealthBreakdown(Player player, string profileId, Rect boxRect, Color color)
         {
             var health = player.HealthController;
 
-            string Hp(EBodyPart part)
+            _bodyPartHealthCache.TryGetValue(profileId, out var cached);
+
+            int Update(EBodyPart part, ref int lastValue, ref string lastText)
             {
-                var hp = health.GetBodyPartHealth(part, false);
-                return Mathf.CeilToInt(hp.Current).ToString();
+                var value = Mathf.CeilToInt(health.GetBodyPartHealth(part, false).Current);
+                if (!cached.Initialized || value != lastValue)
+                {
+                    lastValue = value;
+                    lastText = value.ToString();
+                }
+
+                return value;
             }
+
+            Update(EBodyPart.Head, ref cached.Head, ref cached.HeadText);
+            Update(EBodyPart.Chest, ref cached.Chest, ref cached.ChestText);
+            Update(EBodyPart.Stomach, ref cached.Stomach, ref cached.StomachText);
+            Update(EBodyPart.LeftArm, ref cached.LeftArm, ref cached.LeftArmText);
+            Update(EBodyPart.RightArm, ref cached.RightArm, ref cached.RightArmText);
+            Update(EBodyPart.LeftLeg, ref cached.LeftLeg, ref cached.LeftLegText);
+            Update(EBodyPart.RightLeg, ref cached.RightLeg, ref cached.RightLegText);
+            cached.Initialized = true;
+            _bodyPartHealthCache[profileId] = cached;
 
             var centerX = boxRect.x + boxRect.width / 2f;
 
             var prevColor = GUI.color;
             GUI.color = color;
 
-            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.y - PartLabelHeight - 2f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.Head), HpLabelStyle);
-            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.y + boxRect.height * 0.2f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.Chest), HpLabelStyle);
-            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.yMax - boxRect.height * 0.2f - PartLabelHeight, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.Stomach), HpLabelStyle);
-            GUI.Label(new Rect(boxRect.x - PartLabelWidth - SideLabelOffset, boxRect.y + boxRect.height * 0.3f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.LeftArm), HpLabelStyle);
-            GUI.Label(new Rect(boxRect.xMax + SideLabelOffset, boxRect.y + boxRect.height * 0.3f, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.RightArm), HpLabelStyle);
-            GUI.Label(new Rect(boxRect.x - PartLabelWidth - SideLabelOffset, boxRect.yMax - PartLabelHeight, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.LeftLeg), HpLabelStyle);
-            GUI.Label(new Rect(boxRect.xMax + SideLabelOffset, boxRect.yMax - PartLabelHeight, PartLabelWidth, PartLabelHeight), Hp(EBodyPart.RightLeg), HpLabelStyle);
+            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.y - PartLabelHeight - 2f, PartLabelWidth, PartLabelHeight), cached.HeadText, HpLabelStyle);
+            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.y + boxRect.height * 0.2f, PartLabelWidth, PartLabelHeight), cached.ChestText, HpLabelStyle);
+            GUI.Label(new Rect(centerX - PartLabelWidth / 2f, boxRect.yMax - boxRect.height * 0.2f - PartLabelHeight, PartLabelWidth, PartLabelHeight), cached.StomachText, HpLabelStyle);
+            GUI.Label(new Rect(boxRect.x - PartLabelWidth - SideLabelOffset, boxRect.y + boxRect.height * 0.3f, PartLabelWidth, PartLabelHeight), cached.LeftArmText, HpLabelStyle);
+            GUI.Label(new Rect(boxRect.xMax + SideLabelOffset, boxRect.y + boxRect.height * 0.3f, PartLabelWidth, PartLabelHeight), cached.RightArmText, HpLabelStyle);
+            GUI.Label(new Rect(boxRect.x - PartLabelWidth - SideLabelOffset, boxRect.yMax - PartLabelHeight, PartLabelWidth, PartLabelHeight), cached.LeftLegText, HpLabelStyle);
+            GUI.Label(new Rect(boxRect.xMax + SideLabelOffset, boxRect.yMax - PartLabelHeight, PartLabelWidth, PartLabelHeight), cached.RightLegText, HpLabelStyle);
 
             GUI.color = prevColor;
         }

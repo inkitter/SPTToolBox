@@ -571,6 +571,15 @@ namespace SPTMap
                 Plugin.Log.LogError($"OnRaidEnd hit damage popup teardown exception: {e}");
             }
 
+            try
+            {
+                EnemyEspRenderer.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd enemy ESP teardown exception: {e}");
+            }
+
             MarkerManager.Clear();
         }
 

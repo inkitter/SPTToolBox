@@ -5,14 +5,8 @@
     { "op": "replace", "path": "/config/SkillsSettings/Crafting/EliteExtraProductions", "value": 5 },
     { "op": "replace", "path": "/config/SkillsSettings/Intellect/RepairPointsCostReduction", "value": 0.0015 },
     { "op": "replace", "path": "/config/SkillsSettings/CovertMovement/MovementAction", "value": 2 },
-    { "op": "replace", "path": "/config/SkillsSettings/Endurance/MovementAction", "value": 0.02 },
-    { "op": "replace", "path": "/config/SkillsSettings/Endurance/SprintAction", "value": 0.15 },
     { "op": "replace", "path": "/config/SkillsSettings/HideoutManagement/ConsumptionReductionPerLevel", "value": 0.8 },
     { "op": "replace", "path": "/config/SkillsSettings/Search/FindAction", "value": 0.5 },
-    { "op": "replace", "path": "/config/SkillsSettings/Search/SearchAction", "value": 0.85 },
-    { "op": "replace", "path": "/config/SkillsSettings/Strength/MovementActionMax", "value": 0.04 },
-    { "op": "replace", "path": "/config/SkillsSettings/Strength/MovementActionMin", "value": 0.02 },
-    { "op": "replace", "path": "/config/SkillsSettings/Strength/SprintActionMax", "value": 0.4 },
-    { "op": "replace", "path": "/config/SkillsSettings/Strength/SprintActionMin", "value": 0.2 }
+    { "op": "replace", "path": "/config/SkillsSettings/Search/SearchAction", "value": 0.85 }
   ]
 }
