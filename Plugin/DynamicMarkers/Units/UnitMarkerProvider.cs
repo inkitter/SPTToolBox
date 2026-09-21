@@ -62,6 +62,11 @@ namespace SPTMap.DynamicMarkers
 
         private class TrackedEntry
         {
+            // null once the entry is confirmed dead - LockAsCorpse clears this. Nothing reads
+            // Player after that point (Poll's IsAlive-false branch never dereferences it, and the
+            // marker's closures only ever read State), so holding onto a full Player reference
+            // (its whole Inventory/Equipment/AI component tree) for the rest of a long raid with
+            // continuous bot spawns was pure waste - the corpse marker itself stays untouched.
             public Player Player;
             public MapMarker Marker;
             public TrackedPlayerState State;
@@ -181,7 +186,7 @@ namespace SPTMap.DynamicMarkers
                 {
                     if (!isAlive)
                     {
-                        LockAsCorpse(player, entry.State);
+                        LockAsCorpse(entry);
                     }
                     else if (!_aliveScratch.Contains(profileId))
                     {
@@ -212,12 +217,15 @@ namespace SPTMap.DynamicMarkers
             state.Facing = new Vector2(forward.x, forward.z);
         }
 
-        private static void LockAsCorpse(Player player, TrackedPlayerState state)
+        private static void LockAsCorpse(TrackedEntry entry)
         {
+            var player = entry.Player;
+            var state = entry.State;
             UpdateLiveState(player, state); // capture the final position at time of death detection
             state.Facing = null;
             state.CorpseColor = GetCorpseColor(player);
             state.IsAlive = false;
+            entry.Player = null;
         }
 
         private void TryAddMarker(IPlayer iPlayer)

@@ -37,6 +37,7 @@ namespace SPTMap.Config
         public static ConfigEntry<float> EspDistance;
         public static ConfigEntry<bool> ShowBodyPartHealth;
         public static ConfigEntry<bool> ShowHitDamageNumbers;
+        public static ConfigEntry<bool> ShowHitDamageNumbersV2;
         public static ConfigEntry<bool> ShowAiInfo;
 
         public static void Init(ConfigFile config)
@@ -180,6 +181,14 @@ namespace SPTMap.Config
                 "Show hit damage numbers",
                 true,
                 "Pops a floating number over an enemy's head whenever you damage them");
+
+            ShowHitDamageNumbersV2 = config.Bind(
+                EspTitle,
+                "Show hit damage numbers (event-based, experimental)",
+                false,
+                "Alternative to 'Show hit damage numbers' - spawns popups from Player.OnDamageReceived "
+                + "hit events instead of polling every enemy's HP every frame. Independent of the option "
+                + "above; enable to compare, disable if it misbehaves");
 
             ShowAiInfo = config.Bind(
                 EspTitle,

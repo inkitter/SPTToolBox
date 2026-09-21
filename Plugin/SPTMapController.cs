@@ -163,6 +163,18 @@ namespace SPTMap
                 }
             }
 
+            if (GameUtils.IsInRaid() && SPTMapConfig.ShowHitDamageNumbersV2.Value)
+            {
+                try
+                {
+                    BulletHitPopupRenderer.Tick();
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogError($"BulletHitPopupRenderer.Tick exception: {e}");
+                }
+            }
+
             if (Input.GetKeyDown(PeekKey))
             {
                 _peekToggled = !_peekToggled;
@@ -176,6 +188,18 @@ namespace SPTMap
                 {
                     // map just opened - refresh the throttled quest/wishlist markers immediately
                     // instead of leaving them stale until their next 60s tick fires.
+                    // Single shared loot-list scan for both consumers below (QuestMarkerProvider's
+                    // find-item condition, ItemMarkerProvider's wishlist/backpack rules) instead of
+                    // each walking GameWorld.LootList itself.
+                    try
+                    {
+                        LootScanCache.Rescan();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Loot scan cache refresh-on-open exception: {e}");
+                    }
+
                     try
                     {
                         _questMarkerProvider?.RefreshNow();
@@ -340,6 +364,17 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidStart door marker setup exception: {e}");
+            }
+
+            try
+            {
+                // Shared with ItemMarkerProvider's OnRaidStart scan below - see the map-open
+                // handler above for why this is a single cache rescan, not one per consumer.
+                LootScanCache.Rescan();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart loot scan cache setup exception: {e}");
             }
 
             try
@@ -569,6 +604,15 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidEnd hit damage popup teardown exception: {e}");
+            }
+
+            try
+            {
+                BulletHitPopupRenderer.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd bullet hit popup teardown exception: {e}");
             }
 
             try
@@ -840,6 +884,15 @@ namespace SPTMap
                     catch (Exception e)
                     {
                         Plugin.Log.LogError($"HitDamagePopupRenderer.Draw exception: {e}");
+                    }
+
+                    try
+                    {
+                        BulletHitPopupRenderer.Draw();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"BulletHitPopupRenderer.Draw exception: {e}");
                     }
                 }
 

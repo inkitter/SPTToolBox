@@ -221,8 +221,10 @@ namespace SPTMap.Utils
                     GUILayout.FlexibleSpace();
                     if (tab == 1)
                     {
-                        // no button - accepting a quest for real needs the actual trader/task UI
-                        // flow, not a bypass.
+                        if (GUILayout.Button("Accept", GUILayout.Width(70f)))
+                        {
+                            TryAccept(questController, quest);
+                        }
                     }
                     else if (tab == 2)
                     {
@@ -605,6 +607,33 @@ namespace SPTMap.Utils
             }
 
             GUILayout.EndVertical();
+        }
+
+        // AcceptQuest is the same entry point the native Tasks/trader "Accept" button ends up
+        // calling - it returns Il2CppSystem.Threading.Tasks.Task<OperationResult<QuestAcceptResult>>
+        // (a real client-server round trip), but the result is intentionally not awaited/polled here
+        // - see PrestigeDebugPatches.Postfix's comment for why awaiting/ContinueWith on an Il2Cpp
+        // Task is unverified in this project (delegate marshaling risk). Fire-and-forget, same as
+        // TryFinish/TryForceFinish below - the quest list will simply show the new status once the
+        // server round trip lands and the native quest-list refresh picks it up.
+        private static void TryAccept(QuestController questController, Quest quest)
+        {
+            try
+            {
+                if (quest.QuestStatus != EQuestStatus.AvailableForStart
+                    && quest.QuestStatus != EQuestStatus.AutoStart
+                    && quest.QuestStatus != EQuestStatus.AvailableAfter)
+                {
+                    return;
+                }
+
+                questController.AcceptQuest(quest, false);
+                Plugin.Log.LogInfo($"QuestDebugPanel: AcceptQuest invoked for '{quest.Name}' ({quest.Id})");
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"QuestDebugPanel: AcceptQuest threw for '{quest?.Name}': {e}");
+            }
         }
 
         private static void TryFinish(QuestController questController, Quest quest)

@@ -31,23 +31,20 @@ namespace SPTMap.Utils
 
         internal static void TryCaptureQuestData()
         {
-            var gameWorld = Singleton<GameWorld>.Instance;
-
             _triggersWithIds ??= Object.FindObjectsOfType<TriggerWithId>().ToList();
 
-            if (_questItems == null)
+            // Unlike triggers (static geometry, fine to cache once), quest item loot isn't
+            // reliably present in the world the instant raid start fires - re-derive every call
+            // (QuestMarkerProvider calls this on each map-open refresh) instead of capturing once
+            // and going stale. Reads LootScanCache.Items rather than scanning GameWorld.LootList
+            // itself - SPTMapController rescans that cache once per refresh, shared with
+            // ItemMarkerProvider, so the whole loot list isn't walked twice for the same event.
+            _questItems = new List<LootItem>();
+            foreach (var loot in LootScanCache.Items)
             {
-                _questItems = new List<LootItem>();
-                var lootItems = gameWorld.LootItems?._iteration;
-                if (lootItems != null)
+                if (loot.Item.QuestItem)
                 {
-                    foreach (var item in lootItems)
-                    {
-                        if (item.Item.QuestItem)
-                        {
-                            _questItems.Add(item);
-                        }
-                    }
+                    _questItems.Add(loot);
                 }
             }
         }
@@ -156,6 +153,26 @@ namespace SPTMap.Utils
             else if (condition.TryCast<ConditionInZone>() is { } zone)
             {
                 foreach (var zoneId in zone.zoneIds)
+                {
+                    foreach (var position in GetPositionsForZoneId(zoneId))
+                    {
+                        yield return position;
+                    }
+                }
+            }
+            else if (condition.TryCast<ConditionLeaveItemAtLocation>() is { } leaveItemCondition)
+            {
+                foreach (var zoneId in leaveItemCondition.zoneIds)
+                {
+                    foreach (var position in GetPositionsForZoneId(zoneId))
+                    {
+                        yield return position;
+                    }
+                }
+            }
+            else if (condition.TryCast<ConditionPlaceBeacon>() is { } beaconCondition)
+            {
+                foreach (var zoneId in beaconCondition.zoneIds)
                 {
                     foreach (var position in GetPositionsForZoneId(zoneId))
                     {

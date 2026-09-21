@@ -60,6 +60,20 @@ namespace SPTMap.Utils
         // called every frame from SPTMapController.Update while in a raid.
         public static void Tick()
         {
+            // Pruned here, not just in Draw() - Draw() is only called while the full map isn't
+            // open (see SPTMapController.OnGUI's peeking check), but Tick() (and thus _popups.Add)
+            // keeps running regardless. Without this, holding M during a firefight let _popups
+            // grow unbounded for as long as the map stayed open, since nothing was left removing
+            // expired entries.
+            var now = Time.time;
+            for (var i = _popups.Count - 1; i >= 0; i--)
+            {
+                if (now - _popups[i].SpawnTime >= PopupLifetimeSeconds)
+                {
+                    _popups.RemoveAt(i);
+                }
+            }
+
             var gameWorld = Singleton<GameWorld>.Instance;
             if (gameWorld == null)
             {

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Comfort.Common;
 using EFT;
 using EFT.Interactive;
 using EFT.InventoryLogic;
@@ -248,29 +247,12 @@ namespace SPTMap.DynamicMarkers
                 rule.PrepareRescan();
             }
 
-            // GameWorld is a UnityEngine.Object-derived (MonoBehaviour) - explicit ifs instead of
-            // ?., see git history/memory ("?./?? bypasses Unity's fake-null override").
-            var gameWorld = Singleton<GameWorld>.Instance;
-            if (gameWorld == null)
-            {
-                return;
-            }
-
-            var lootList = gameWorld.LootList;
-            if (lootList == null)
-            {
-                return;
-            }
-
+            // Reads the shared LootScanCache (rescanned once per event by SPTMapController)
+            // instead of walking GameWorld.LootList itself - QuestUtils reads the same cache, so
+            // the full world loot list isn't scanned twice for one map-open/raid-start.
             _foundScratch.Clear();
-            foreach (var killable in lootList)
+            foreach (var loot in LootScanCache.Items)
             {
-                var loot = killable.TryCast<LootItem>();
-                if (loot == null)
-                {
-                    continue;
-                }
-
                 foreach (var rule in _rules)
                 {
                     if (!rule.TryGetMarkerSpec(loot, out var spec))
