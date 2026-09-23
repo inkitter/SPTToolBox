@@ -127,7 +127,7 @@ namespace SPTMap
         // Hard kill switches, independent of any ConfigEntry - flipping these to true must
         // guarantee the corresponding provider's code never runs, not just default-off.
         private const bool ItemMarkersDisabled = false;
-        private const bool LootableContainerMarkersDisabled = true;
+        private const bool LootableContainerMarkersDisabled = false;
 
         // reused snapshot buffer for DrawMarkers - a provider can add/remove markers mid-frame
         // (e.g. death during this same frame's event handling), so iterating MarkerManager.Markers
@@ -233,6 +233,8 @@ namespace SPTMap
                         Plugin.Log.LogError($"Quest marker refresh-on-open exception: {e}");
                     }
 
+                    TryRefreshLootableContainerMarkers();
+
                     try
                     {
                         _itemMarkerProvider?.RefreshNow();
@@ -306,7 +308,6 @@ namespace SPTMap
                 TryRetryDoorMarkers();
                 TryRetryQuestMarkers();
                 TryRetryTransitMarkers();
-                TryRetryLootableContainerMarkers();
                 TryTickUnits();
 
                 // Quest/wishlist/airdrop/backpack/extract/door-key-ownership are all expensive
@@ -487,18 +488,6 @@ namespace SPTMap
                 Plugin.Log.LogError($"OnRaidStart item marker setup exception: {e}");
             }
 
-            try
-            {
-                if (!LootableContainerMarkersDisabled && SPTMapConfig.ShowLootableContainers.Value)
-                {
-                    _lootableContainerMarkerProvider ??= new LootableContainerMarkerProvider();
-                    _lootableContainerMarkerProvider.OnRaidStart();
-                }
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidStart lootable container marker setup exception: {e}");
-            }
         }
 
         private void TryRetryTransitMarkers()
@@ -513,25 +502,22 @@ namespace SPTMap
             }
         }
 
-        private void TryRetryLootableContainerMarkers()
+        private void TryRefreshLootableContainerMarkers()
         {
             try
             {
                 if (!LootableContainerMarkersDisabled && SPTMapConfig.ShowLootableContainers.Value)
                 {
-                    // lazily created here too, not just in the main OnRaidStart - if the setting
-                    // was off when the raid started, OnRaidStart's own block above never ran this
-                    // provider's ??=, so the field stays null forever and toggling the setting on
-                    // mid-raid (this retry loop runs every frame regardless) had nothing to
-                    // populate: a bare `?.OnRaidStart()` on a still-null field is a silent no-op.
+                    // Only called on the frame the big map opens - never at raid start (raid load
+                    // is already hitch-prone) and never per frame. Lazily created so toggling the
+                    // setting on mid-raid works on the next map open.
                     _lootableContainerMarkerProvider ??= new LootableContainerMarkerProvider();
-                    _lootableContainerMarkerProvider.OnRaidStart();
+                    _lootableContainerMarkerProvider.RefreshNow();
                 }
                 else
                 {
-                    // toggled off mid-raid: drop any markers already drawn and reset the provider's
-                    // populate state, so it does a fresh FindObjectsOfType scan (not a stale one) if
-                    // the setting gets flipped back on later in the same raid.
+                    // toggled off mid-raid: drop any markers already drawn and reset, so a later
+                    // re-enable does a fresh scan on the next map open.
                     _lootableContainerMarkerProvider?.OnRaidEnd();
                 }
             }
@@ -586,6 +572,15 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"Unit marker poll exception: {e}");
+            }
+
+            try
+            {
+                _itemMarkerProvider?.Tick(Time.deltaTime);
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"Item marker poll exception: {e}");
             }
         }
 
@@ -1180,7 +1175,9 @@ namespace SPTMap
             var texture = MapUtils.GetTextureByPath(imagePath);
             var iconSize = marker.IconSizeOverride ?? MarkerIconSize;
             var rect = new Rect(screenX - iconSize / 2f, screenY - iconSize / 2f, iconSize, iconSize);
-            var hovered = !string.IsNullOrEmpty(marker.Text) && rect.Contains(Event.current.mousePosition);
+            // only the big map has a free cursor - on the mini-map a locked cursor could still sit over
+            // a marker and trigger GetText (e.g. a container's live item-tree walk) for nothing.
+            var hovered = _peekToggled && !string.IsNullOrEmpty(marker.Text) && rect.Contains(Event.current.mousePosition);
 
             var markerColor = marker.GetColor?.Invoke() ?? marker.Color;
             if (def.HasLevels && activeLevel != null)

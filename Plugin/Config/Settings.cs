@@ -26,6 +26,7 @@ namespace SPTMap.Config
         public static ConfigEntry<bool> ShowOtherMarkerLabels;
         public static ConfigEntry<bool> ShowLootableContainers;
         public static ConfigEntry<bool> ShowWishlist;
+        public static ConfigEntry<bool> ShowDroppedBackpack;
 
         public static ConfigEntry<float> EspDistance;
         public static ConfigEntry<bool> ShowBodyPartHealth;
@@ -159,6 +160,12 @@ namespace SPTMap.Config
                 false,
                 "Whether to render markers for loose loot matching the profile's wishlist (off by "
                 + "default)");
+
+            ShowDroppedBackpack = config.Bind(
+                MarkersTitle,
+                "Show dropped backpack",
+                true,
+                "Whether to mark backpacks you wore earlier this raid and have since dropped");
 
             EspDistance = config.Bind(
                 EspTitle,

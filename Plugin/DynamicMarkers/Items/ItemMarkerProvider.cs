@@ -109,76 +109,69 @@ namespace SPTMap.DynamicMarkers
             }
         }
 
-        // The local player's own dropped/thrown backpack specifically - not corpses', not other
-        // players', not static loot backpacks (matches the predecessor project's
-        // ShowDroppedBackpackInRaid setting: "the player's dropped backpacks, not anyone else's").
-        // Patch-free: instead of hooking PlayerInventoryController.ThrowItem like the predecessor
-        // did, this watches the main player's Backpack equipment slot each PrepareRescan and
-        // remembers the contained item's Id when the slot goes from occupied to empty (i.e.
-        // dropped), then matches that Id against the same LootList pass every other rule uses.
+        // Backpacks the local player wore at some point this raid and has since dropped - not
+        // corpses', not other players', not static loot backpacks. Patch-free: Sample() reads the
+        // main player's Backpack slot on a cheap ~1s poll (ItemMarkerProvider.Tick) plus every
+        // rescan, remembering every backpack instance Id ever equipped. A loose LootItem whose Id is
+        // in that set and isn't what's currently worn is a dropped backpack. Item ids are
+        // per-instance GUIDs, so this can't false-match a different backpack of the same template,
+        // and a picked-up backpack simply stops appearing in the loot scan.
         private class BackpackRule : IItemRule
         {
             private const string Category = "Dropped Backpack";
             private const string ImagePath = "Markers/backpack.png";
             private static readonly Color MarkerColor = Color.green;
 
-            private string _lastEquippedItemId;
-            private string _pendingDroppedItemId;
-            // once a dropped backpack's item id is seen once in the world it's remembered
-            // permanently - item ids are per-instance GUIDs, not template ids, so this can never
-            // false-match a different item and doesn't need explicit clearing when the backpack is
-            // eventually picked back up (it just stops appearing in the scan).
-            private string _trackedItemId;
+            private readonly HashSet<string> _everEquippedIds = new();
+            private string _currentEquippedId;
 
             public void OnRaidStart()
             {
-                _lastEquippedItemId = GetEquippedBackpackItemId();
-                _pendingDroppedItemId = null;
-                _trackedItemId = null;
+                _everEquippedIds.Clear();
+                _currentEquippedId = null;
+                Sample();
             }
 
             public void OnRaidEnd()
             {
-                _lastEquippedItemId = null;
-                _pendingDroppedItemId = null;
-                _trackedItemId = null;
+                _everEquippedIds.Clear();
+                _currentEquippedId = null;
+            }
+
+            public void Sample()
+            {
+                _currentEquippedId = GetEquippedBackpackItemId();
+                if (_currentEquippedId != null)
+                {
+                    _everEquippedIds.Add(_currentEquippedId);
+                }
             }
 
             public void PrepareRescan()
             {
-                var currentEquippedId = GetEquippedBackpackItemId();
-                if (_lastEquippedItemId != null && currentEquippedId == null)
-                {
-                    _pendingDroppedItemId = _lastEquippedItemId;
-                }
-
-                _lastEquippedItemId = currentEquippedId;
+                Sample();
             }
 
             public bool TryGetMarkerSpec(LootItem loot, out MarkerSpec spec)
             {
                 spec = default;
+                if (!Settings.ShowDroppedBackpack.Value || _everEquippedIds.Count == 0)
+                {
+                    return false;
+                }
+
                 var itemId = loot.Item?.Id;
-                if (itemId == null)
+                if (itemId == null || itemId == _currentEquippedId || !_everEquippedIds.Contains(itemId))
                 {
                     return false;
                 }
 
-                if (itemId != _trackedItemId && itemId != _pendingDroppedItemId)
-                {
-                    return false;
-                }
-
-                _trackedItemId = itemId;
-                _pendingDroppedItemId = null;
                 spec = new MarkerSpec(Category, ImagePath, MarkerColor, true);
                 return true;
             }
 
-            // Player is a UnityEngine.Object-derived (MonoBehaviour) - explicit ifs instead of a ?.
-            // chain, per the "?./?? bypasses Unity's fake-null override" rule (see git
-            // history/memory). Inventory/Equipment/Slot/Item are plain Il2CppSystem.Object, not
-            // UnityEngine.Object, so ?. on those hops is fine.
+            // Player is a UnityEngine.Object-derived (MonoBehaviour) - explicit if instead of ?..
+            // Inventory/Equipment/Slot/Item are plain Il2CppSystem.Object, so ?. on those is fine.
             private static string GetEquippedBackpackItemId()
             {
                 var player = GameUtils.GetMainPlayer();
@@ -192,11 +185,17 @@ namespace SPTMap.DynamicMarkers
             }
         }
 
-        private readonly List<IItemRule> _rules = new()
+        private const float BackpackSampleIntervalSeconds = 1f;
+
+        private readonly BackpackRule _backpackRule = new();
+        private float _backpackSampleTimer;
+
+        private readonly List<IItemRule> _rules;
+
+        public ItemMarkerProvider()
         {
-            new WishlistRule(),
-            // BackpackRule not yet verified in-game - re-add once it is.
-        };
+            _rules = new List<IItemRule> { new WishlistRule(), _backpackRule };
+        }
 
         // Keyed by the item's instance Id (a stable string), not the LootItem itself - Il2Cpp
         // wrapper objects for the same native LootItem aren't guaranteed to be the same managed
@@ -238,6 +237,26 @@ namespace SPTMap.DynamicMarkers
         // periodic re-trigger even if the map stays open a long time: re-diffing the whole
         // GameWorld.LootList matters far less than avoiding another source of periodic frame drops
         // - close and reopen the map to force a fresh look.
+        // Cheap per-frame hook: only samples the local player's Backpack slot about once a second
+        // so a backpack worn briefly between map opens (picked up, then dropped) is still known.
+        // No world/loot scanning here - that stays map-open-only.
+        public void Tick(float deltaTime)
+        {
+            if (!Settings.ShowDroppedBackpack.Value)
+            {
+                return;
+            }
+
+            _backpackSampleTimer += deltaTime;
+            if (_backpackSampleTimer < BackpackSampleIntervalSeconds)
+            {
+                return;
+            }
+
+            _backpackSampleTimer = 0f;
+            _backpackRule.Sample();
+        }
+
         public void RefreshNow()
         {
             Rescan();
