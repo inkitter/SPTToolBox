@@ -4,27 +4,12 @@ Detailed background, design rationale, and history moved out of `CLAUDE.md` to k
 
 ## Release procedure (GitHub)
 
-Releases are published from https://github.com/inkitter/SPTToolBox via `gh`. `gh` is installed via winget but isn't on PATH by default — call it as `& "C:\Program Files\GitHub CLI\gh.exe" ...`. Confirm auth first: `gh auth status`.
+Releases are published from https://github.com/inkitter/SPTToolBox via `gh`.
 
 1. Close the game, `dotnet build` from `Plugin\` (PostBuild deploys to `$(TarkovDir)BepInEx\plugins\sptmap\`).
 2. Zip that deployed folder under a `BepInEx/plugins/sptmap/...` prefix (so it extracts straight into an SPT install root) — stage it into a scratch dir first:
-   ```powershell
-   mkdir <stage>\BepInEx\plugins\sptmap
-   cp -r "$TarkovDir\BepInEx\plugins\sptmap\." <stage>\BepInEx\plugins\sptmap\
-   # zip <stage> contents (with the BepInEx\... prefix preserved) to SPTMap-vX.Y.Z.zip
-   ```
 3. If replacing an existing tag (same-version republish), move it to the current commit:
-   ```
-   git tag -d vX.Y.Z
-   git tag vX.Y.Z -m "vX.Y.Z - built for <compat table entry>"
-   git push origin :refs/tags/vX.Y.Z
-   git push origin vX.Y.Z
-   ```
 4. Delete the old release (if any) and create the new one:
-   ```
-   gh release delete vX.Y.Z --repo inkitter/SPTToolBox --yes --cleanup-tag=false
-   gh release create vX.Y.Z --repo inkitter/SPTToolBox --title "SPTMap vX.Y.Z" --notes "..." SPTMap-vX.Y.Z.zip
-   ```
 
 ## DbPostPatcher details
 
@@ -91,29 +76,3 @@ Each `MapDef` has a `Levels` list (empty = single-level). Each level has its own
 Removed providers (see `git log`): `WishlistMarkerProvider`, `HiddenStashMarkerProvider`, `SecretMarkerProvider`, `BackpackMarkerProvider`.
 
 Raid start/end is edge-detected in `SPTMapController.Update()` off `GameUtils.IsInRaid()`, driving providers' `OnRaidStart`/`OnRaidEnd` + `MarkerManager.Clear()`.
-
-### Hit damage popups
-
-`BulletHitPopupRenderer.cs` (`Settings.ShowHitDamageNumbers`, on by default) subscribes to each tracked player's `Player.OnDamageReceived`; the callback only enqueues a value-type struct, spawning happens on next `Tick()`. It replaced (2026-09-22) a poll-based `HitDamagePopupRenderer` that diffed `HealthController.GetBodyPartHealth` every frame — suspected cause of an intermittent `AccessViolationException`. Don't use `ActiveHealthController.ApplyDamageEvent`: its `DamageInfo` isn't blittable and `ConvertDelegate` throws.
-
-Subscribe with `player.add_OnDamageReceived(handler)` using an explicitly-typed `System.Action<...>` local — not `+= lambda`; the implicit conversion to `DamageDelegate` only resolves in method-argument/explicit-cast context.
-
-### Quest debug panel (F9)
-
-`QuestDebugPanel.cs` — dev-only floating panel listing quests (Incomplete/Not started/Completed) with a "Finish" button calling `QuestController.TryInstantFinishQuest` (same as the native Tasks-screen button, so rewards/unlocks fire for real). Uses `ItemUiContext.Instance.QuestController`. Should be gated/removed before a release for other players.
-
-Prestige section (`PrestigeDebugPatches.cs`): forcing `PrestigeController.CanUpgrade` true via postfix caused a per-frame `NotImplementedException` flood (other UI polls it and hit unimplemented server paths). Instead: "Show Prestige Screen" calls `_prestigeScreen.Show(profile, prestigeController, inventoryController, session)` on the open `InventoryScreen` (Inventory must be open); "Click Obtain Prestige" calls `PrestigeScreen.ObtainPrestigeHandler()` directly. `PrestigeGlobalsLoadPatch` (flips `GameModeDescriptor.GameMode` to `Regular` during `TarkovApplication.GlobalsDataLoader.Load` so PvE populates `PrestigeTemplate`) is the one remaining always-on patch — one-shot, not per-frame. Confirmed working 2026-09-15.
-
-## Map calibration notes
-
-- 9 maps refreshed from tarkov.dev, confirmed current 2026-09-10. Labs/Labyrinth have no `svgPath` on tarkov.dev and stay on old vendored data.
-- If a map doesn't line up after a refresh: manual affine recalibration via `calibrate_bounds.py` (using in-game Keypad `.` landmarks logged by `LogLandmark`); proportionally expanding `Bounds` is last resort.
-- Floors with no SVG art on tarkov.dev are skipped: Customs 4th floor, Reserve above-ground floors except Bunkers — they show the Ground image.
-
-## History / status log
-
-- Some display constants (mini-map size, zoom speed) are `ConfigEntry`s in `Settings.cs`; box sizing and key bindings are still hardcoded in `Plugin.cs`. No POI labels yet.
-- 2026-09-15: fixed ~10 fps drop from an early hidden-stash provider whose "populated" flag only flipped once a match was found, so a full-scene `FindObjectsOfType` re-ran every frame on maps without a match. Provider since removed; the bounded-retry pattern survives.
-- 2026-09-16: scan-cost rework (see Markers). `DynamicMarkers/` reorganized into `MapFeatures/`, `Units/`, `Items/`.
-- Still unverified in-game: quest markers, extract status-color updates, unit marker cleanup on death/raid-end, `ItemMarkerProvider`/`LootableContainerMarkerProvider`.
-- 2026-09-22: `BulletHitPopupRenderer` replaced the polling `HitDamagePopupRenderer` (deleted).
