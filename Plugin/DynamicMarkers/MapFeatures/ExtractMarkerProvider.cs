@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Comfort.Common;
 using EFT;
 using EFT.Interactive;
+using EFT.MovingPlatforms;
 using Il2CppInterop.Runtime;
 using SPTMap.Data;
 using SPTMap.Utils;
@@ -15,7 +16,7 @@ namespace SPTMap.DynamicMarkers
     // Covers both regular and secret extracts as one uniform "extract point" - to the player both
     // just mean "red = can't use it right now, green = can", so there's no reason to track them as
     // separate types/categories; SecretExfiltrationPoint is itself an ExfiltrationPoint, so a
-    // single Dictionary<ExfiltrationPoint, MapMarker> covers both without a cast anywhere.
+    // single dictionary covers both without a cast anywhere.
     public class ExtractMarkerProvider
     {
         private const string Category = "Extract";
@@ -25,8 +26,35 @@ namespace SPTMap.DynamicMarkers
         private static readonly Color RequirementsColor = Color.yellow;
         private static readonly Color OpenColor = Color.green;
 
-        private readonly Dictionary<ExfiltrationPoint, MapMarker> _markers = new();
+        // Keyed by a string (name + position), not by the ExfiltrationPoint itself: Il2Cpp wrapper
+        // objects handed back from different native calls aren't guaranteed to be the same managed
+        // instance (see UnitMarkerProvider), so an object-keyed ContainsKey could miss and every
+        // RefreshNow (each map open) would stack duplicate markers - growing draw cost all raid.
+        private readonly Dictionary<string, TrackedExtract> _markers = new();
+
+        private struct TrackedExtract
+        {
+            public ExfiltrationPoint Extract;
+            public MapMarker Marker;
+        }
+
+        // Found-nothing can't be the only stop condition (a raid with zero matching extracts would
+        // rescan every frame forever - the same bug that tanked FPS before), so bound it in time.
+        private const float MaxRetrySeconds = 5f;
+        private float _firstAttemptTime = -1f;
         private readonly Il2CppSystem.Action<ExfiltrationPoint, EExfiltrationStatus> _onStatusChanged;
+
+        // Lighthouse train extract: icon colour follows the train's own travel state instead of
+        // the extract status - red not yet coming, yellow on its way, green boardable (arrived),
+        // gray departing/gone. Locomotive is found with one scene scan, only on a map that has
+        // this extract; retried once per map open (RefreshNow) if it wasn't found yet.
+        private const string TrainExtractName = "EXFIL_Train";
+        private static readonly Color TrainNotStartedColor = Color.red;
+        private static readonly Color TrainIncomingColor = Color.yellow;
+        private static readonly Color TrainBoardableColor = Color.green;
+        private static readonly Color TrainGoneColor = Color.gray;
+        private Locomotive _locomotive;
+        private bool _hasTrainExtract;
 
         // ExfiltrationController's point lists aren't populated/activated yet the instant
         // game.InRaid flips true (they show up a bit later during raid setup), so a single
@@ -52,7 +80,17 @@ namespace SPTMap.DynamicMarkers
                 return;
             }
 
+            if (_firstAttemptTime < 0f)
+            {
+                _firstAttemptTime = Time.time;
+            }
+
             ScanForExtracts();
+
+            if (Time.time - _firstAttemptTime >= MaxRetrySeconds)
+            {
+                _populated = true;
+            }
         }
 
         // Called once on the frame the map is opened (see SPTMapController's peek-toggle edge) -
@@ -67,6 +105,11 @@ namespace SPTMap.DynamicMarkers
         public void RefreshNow()
         {
             ScanForExtracts();
+
+            if (_hasTrainExtract && _locomotive == null)
+            {
+                FindLocomotive();
+            }
         }
 
         private void ScanForExtracts()
@@ -112,30 +155,36 @@ namespace SPTMap.DynamicMarkers
         {
             // copy keys first - unsubscribing/removing while enumerating the dictionary itself
             // would throw.
-            var extracts = new List<ExfiltrationPoint>(_markers.Count);
-            foreach (var extract in _markers.Keys)
+            foreach (var tracked in _markers.Values)
             {
-                extracts.Add(extract);
-            }
+                try
+                {
+                    tracked.Extract.OnStatusChanged -= _onStatusChanged;
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogWarning($"ExtractMarkerProvider: unsubscribe failed: {e.Message}");
+                }
 
-            foreach (var extract in extracts)
-            {
-                extract.OnStatusChanged -= _onStatusChanged;
-                MarkerManager.Remove(_markers[extract]);
+                MarkerManager.Remove(tracked.Marker);
             }
 
             _markers.Clear();
             _populated = false;
+            _locomotive = null;
+            _hasTrainExtract = false;
+            _firstAttemptTime = -1f;
         }
 
         private void AddMarker(ExfiltrationPoint extract)
         {
-            if (_markers.ContainsKey(extract))
+            var worldPos = extract.transform.position;
+            var key = GetKey(extract, worldPos);
+            if (_markers.ContainsKey(key))
             {
                 return;
             }
 
-            var worldPos = extract.transform.position;
             var pos = MathUtils.ConvertToMapPosition(worldPos);
             var marker = new MapMarker
             {
@@ -147,21 +196,65 @@ namespace SPTMap.DynamicMarkers
                 GetWorldPosition = () => worldPos,
             };
 
-            _markers[extract] = marker;
+            _markers[key] = new TrackedExtract { Extract = extract, Marker = marker };
             MarkerManager.Add(marker);
+
+            if (extract.Settings.Name == TrainExtractName)
+            {
+                _hasTrainExtract = true;
+                FindLocomotive();
+                marker.GetColor = () => GetTrainColor(marker.Color);
+            }
 
             extract.OnStatusChanged += _onStatusChanged;
             UpdateStatus(extract, extract.Status);
         }
 
+        private void FindLocomotive()
+        {
+            var locomotives = UnityEngine.Object.FindObjectsOfType<Locomotive>();
+            if (locomotives != null && locomotives.Length > 0)
+            {
+                _locomotive = locomotives[0];
+            }
+        }
+
+        // Locomotive is a MonoBehaviour - explicit == null (fake-null safe), no ?.
+        private Color GetTrainColor(Color fallback)
+        {
+            if (_locomotive == null)
+            {
+                return fallback;
+            }
+
+            var travelState = _locomotive.TravelState;
+            if (travelState == null)
+            {
+                return fallback;
+            }
+
+            return travelState.Value switch
+            {
+                Locomotive.ETravelState.NotStarted => TrainNotStartedColor,
+                Locomotive.ETravelState.OnRouteToDestination => TrainIncomingColor,
+                Locomotive.ETravelState.Arrived => TrainBoardableColor,
+                _ => TrainGoneColor,
+            };
+        }
+
+        private static string GetKey(ExfiltrationPoint extract, Vector3 worldPos)
+        {
+            return $"{extract.Settings.Name}@{worldPos.x:0.0},{worldPos.y:0.0},{worldPos.z:0.0}";
+        }
+
         private void UpdateStatus(ExfiltrationPoint extract, EExfiltrationStatus status)
         {
-            if (!_markers.TryGetValue(extract, out var marker))
+            if (extract == null || !_markers.TryGetValue(GetKey(extract, extract.transform.position), out var tracked))
             {
                 return;
             }
 
-            marker.Color = status switch
+            tracked.Marker.Color = status switch
             {
                 EExfiltrationStatus.NotPresent => ClosedColor,
                 EExfiltrationStatus.UncompleteRequirements => RequirementsColor,

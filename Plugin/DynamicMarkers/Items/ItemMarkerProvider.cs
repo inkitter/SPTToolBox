@@ -195,13 +195,16 @@ namespace SPTMap.DynamicMarkers
         private readonly List<IItemRule> _rules = new()
         {
             new WishlistRule(),
-            new BackpackRule(),
+            // BackpackRule not yet verified in-game - re-add once it is.
         };
 
-        private readonly Dictionary<(IItemRule Rule, LootItem Loot), MapMarker> _markers = new();
+        // Keyed by the item's instance Id (a stable string), not the LootItem itself - Il2Cpp
+        // wrapper objects for the same native LootItem aren't guaranteed to be the same managed
+        // instance across scans, which would make every rescan drop and re-add every marker.
+        private readonly Dictionary<(IItemRule Rule, string ItemId), MapMarker> _markers = new();
         // reused across Rescan calls instead of allocating fresh collections every trigger.
-        private readonly HashSet<(IItemRule Rule, LootItem Loot)> _foundScratch = new();
-        private readonly List<(IItemRule Rule, LootItem Loot)> _staleScratch = new();
+        private readonly HashSet<(IItemRule Rule, string ItemId)> _foundScratch = new();
+        private readonly List<(IItemRule Rule, string ItemId)> _staleScratch = new();
 
         public void OnRaidStart()
         {
@@ -260,7 +263,13 @@ namespace SPTMap.DynamicMarkers
                         continue;
                     }
 
-                    var key = (rule, loot);
+                    var itemId = loot.Item?.Id;
+                    if (itemId == null)
+                    {
+                        continue;
+                    }
+
+                    var key = (rule, itemId);
                     _foundScratch.Add(key);
                     if (!_markers.ContainsKey(key))
                     {
@@ -268,6 +277,8 @@ namespace SPTMap.DynamicMarkers
                     }
                 }
             }
+
+            Plugin.Log.LogInfo($"[items] rescan: {LootScanCache.Items.Count} loose loot, {_markers.Count} marked");
 
             _staleScratch.Clear();
             foreach (var key in _markers.Keys)
@@ -285,7 +296,7 @@ namespace SPTMap.DynamicMarkers
             }
         }
 
-        private void AddMarker((IItemRule Rule, LootItem Loot) key, LootItem loot, MarkerSpec spec)
+        private void AddMarker((IItemRule Rule, string ItemId) key, LootItem loot, MarkerSpec spec)
         {
             if (loot.transform == null)
             {

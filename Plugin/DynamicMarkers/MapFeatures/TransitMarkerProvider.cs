@@ -82,7 +82,11 @@ namespace SPTMap.DynamicMarkers
                 // actual locale-keyed name lives on the nested parameters struct (see
                 // LocationSettings.Location.TransitParameters.name/.description in the decompiled
                 // Assembly-CSharp.dll).
-                Text = point.parameters.name.BSGLocalized(),
+                // `name` localizes to a bare "TRANSIT02"; `description` is the useful one
+                // ("Transit to Factory" / "前往工厂")
+                Text = LocalizationUtils.TryLocalize(point.parameters.description)
+                    ?? LocalizationUtils.TryLocalize(point.parameters.name)
+                    ?? point.parameters.name,
                 ShowLabel = true,
                 GetPosition = () => pos,
                 GetWorldPosition = () => worldPos,

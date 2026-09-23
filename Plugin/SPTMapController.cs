@@ -46,7 +46,46 @@ namespace SPTMap
         // the ground by however thick their collider's own margin is - this tiny lift avoids that
         // without being enough to trigger fall damage on landing.
         private const float TeleportStandOffset = 0.05f;
-        private static int MinimapWidth => SPTMapConfig.MiniMapWidth.Value;
+        private static int MinimapSize => SPTMapConfig.MiniMapSize.Value;
+
+        // mini-map rect for a map of the given aspect (height / width): the configured size is the
+        // longer side, the shorter side follows the aspect so the map is never letterboxed.
+        private static Rect GetMinimapRect(float aspect)
+        {
+            float width;
+            float height;
+            if (aspect >= 1f)
+            {
+                height = MinimapSize;
+                width = MinimapSize / aspect;
+            }
+            else
+            {
+                width = MinimapSize;
+                height = MinimapSize * aspect;
+            }
+
+            var origin = GetMinimapOrigin(width, height);
+            LogAnchorIfChanged(origin, width, height);
+            return new Rect(origin.x, origin.y, width, height);
+        }
+
+        // diagnostic: logs once whenever anchor/padding/window size changes, so a wrong placement
+        // report can be checked against what was actually computed.
+        private static string _lastAnchorLog;
+
+        private static void LogAnchorIfChanged(Vector2 origin, float width, float height)
+        {
+            var key = $"{SPTMapConfig.AnchorLeft.Value}|{SPTMapConfig.AnchorBottom.Value}|{SPTMapConfig.PaddingX.Value}|{SPTMapConfig.PaddingY.Value}|{Screen.width}x{Screen.height}|{Mathf.RoundToInt(width)}x{Mathf.RoundToInt(height)}";
+            if (key == _lastAnchorLog)
+            {
+                return;
+            }
+
+            _lastAnchorLog = key;
+            Plugin.Log.LogInfo($"[minimap] anchorLeft={SPTMapConfig.AnchorLeft.Value} anchorBottom={SPTMapConfig.AnchorBottom.Value} padding=({SPTMapConfig.PaddingX.Value},{SPTMapConfig.PaddingY.Value}) "
+                + $"window={Screen.width}x{Screen.height} rect=({origin.x:0},{origin.y:0},{width:0},{height:0})");
+        }
         private const float PeekScreenFraction = 0.8f;
 
         private static Vector2 GetMinimapOrigin(float width, float height)
@@ -54,17 +93,8 @@ namespace SPTMap
             var paddingX = SPTMapConfig.PaddingX.Value;
             var paddingY = SPTMapConfig.PaddingY.Value;
 
-            var x = SPTMapConfig.Anchor.Value switch
-            {
-                Config.MiniMapAnchor.TopLeft or Config.MiniMapAnchor.BottomLeft => paddingX,
-                _ => Screen.width - width - paddingX,
-            };
-
-            var y = SPTMapConfig.Anchor.Value switch
-            {
-                Config.MiniMapAnchor.TopLeft or Config.MiniMapAnchor.TopRight => paddingY,
-                _ => Screen.height - height - paddingY,
-            };
+            var x = SPTMapConfig.AnchorLeft.Value ? paddingX : Screen.width - width - paddingX;
+            var y = SPTMapConfig.AnchorBottom.Value ? Screen.height - height - paddingY : paddingY;
 
             return new Vector2(x, y);
         }
@@ -89,13 +119,14 @@ namespace SPTMap
         private UnitMarkerProvider _unitMarkerProvider;
         private QuestMarkerProvider _questMarkerProvider;
         private TransitMarkerProvider _transitMarkerProvider;
+        private SwitchMarkerProvider _switchMarkerProvider;
         private AirdropMarkerProvider _airdropMarkerProvider;
         private ItemMarkerProvider _itemMarkerProvider;
         private LootableContainerMarkerProvider _lootableContainerMarkerProvider;
 
         // Hard kill switches, independent of any ConfigEntry - flipping these to true must
         // guarantee the corresponding provider's code never runs, not just default-off.
-        private const bool ItemMarkersDisabled = true;
+        private const bool ItemMarkersDisabled = false;
         private const bool LootableContainerMarkersDisabled = true;
 
         // reused snapshot buffer for DrawMarkers - a provider can add/remove markers mid-frame
@@ -107,6 +138,11 @@ namespace SPTMap
         private bool _wasInRaid;
 
         private float _zoom = MinZoom;
+
+        // full map (M) has its own zoom, independent of the mini-map's _zoom - mouse wheel or
+        // keypad 8/5 while it's open only change this one, and vice versa.
+        private float _peekZoom = MinZoom;
+        private const float WheelZoomStep = 1.15f;
 
         // null = auto-detect from GameUtils.GetCurrentMapInternalName(); Keypad 9/6 cycle through
         // every known map def manually (for when auto-detect doesn't match, or just to browse
@@ -152,18 +188,6 @@ namespace SPTMap
             PrestigeGlobalsLoadPatch.Tick();
 
             if (GameUtils.IsInRaid() && SPTMapConfig.ShowHitDamageNumbers.Value)
-            {
-                try
-                {
-                    HitDamagePopupRenderer.Tick();
-                }
-                catch (Exception e)
-                {
-                    Plugin.Log.LogError($"HitDamagePopupRenderer.Tick exception: {e}");
-                }
-            }
-
-            if (GameUtils.IsInRaid() && SPTMapConfig.ShowHitDamageNumbersV2.Value)
             {
                 try
                 {
@@ -235,6 +259,16 @@ namespace SPTMap
                     {
                         Plugin.Log.LogError($"Extract marker refresh-on-open exception: {e}");
                     }
+
+                    try
+                    {
+                        _switchMarkerProvider?.RefreshNow();
+                    }
+                    catch (Exception e)
+                    {
+                        Plugin.Log.LogError($"Switch marker refresh-on-open exception: {e}");
+                    }
+
                 }
             }
 
@@ -287,17 +321,40 @@ namespace SPTMap
             }
             _wasInRaid = inRaid;
 
+            // keypad 8/5/2 zoom whichever map is showing; the two zoom levels never affect each other
+            var zoom = _peekToggled ? _peekZoom : _zoom;
             if (Input.GetKeyDown(KeyCode.Keypad2))
             {
-                _zoom = MinZoom;
+                zoom = MinZoom;
             }
             else if (Input.GetKey(KeyCode.Keypad8))
             {
-                _zoom = Mathf.Clamp(_zoom * Mathf.Pow(ZoomPerSecond, Time.deltaTime), MinZoom, MaxZoom);
+                zoom = Mathf.Clamp(zoom * Mathf.Pow(ZoomPerSecond, Time.deltaTime), MinZoom, MaxZoom);
             }
             else if (Input.GetKey(KeyCode.Keypad5))
             {
-                _zoom = Mathf.Clamp(_zoom / Mathf.Pow(ZoomPerSecond, Time.deltaTime), MinZoom, MaxZoom);
+                zoom = Mathf.Clamp(zoom / Mathf.Pow(ZoomPerSecond, Time.deltaTime), MinZoom, MaxZoom);
+            }
+
+            // mouse wheel only while the full map is open (the cursor is free then; otherwise the
+            // wheel belongs to the game's own weapon/action controls)
+            if (_peekToggled)
+            {
+                var scroll = Input.mouseScrollDelta.y;
+                if (scroll > 0f)
+                {
+                    zoom = Mathf.Clamp(zoom * Mathf.Pow(WheelZoomStep, scroll), MinZoom, MaxZoom);
+                }
+                else if (scroll < 0f)
+                {
+                    zoom = Mathf.Clamp(zoom / Mathf.Pow(WheelZoomStep, -scroll), MinZoom, MaxZoom);
+                }
+
+                _peekZoom = zoom;
+            }
+            else
+            {
+                _zoom = zoom;
             }
 
             if (Input.GetKeyDown(KeyCode.Keypad3))
@@ -395,6 +452,16 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidStart transit marker setup exception: {e}");
+            }
+
+            try
+            {
+                _switchMarkerProvider ??= new SwitchMarkerProvider();
+                _switchMarkerProvider.OnRaidStart();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidStart switch marker setup exception: {e}");
             }
 
             try
@@ -569,6 +636,15 @@ namespace SPTMap
                 Plugin.Log.LogError($"OnRaidEnd transit marker teardown exception: {e}");
             }
 
+            try
+            {
+                _switchMarkerProvider?.OnRaidEnd();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError($"OnRaidEnd switch marker teardown exception: {e}");
+            }
+
 
             try
             {
@@ -595,15 +671,6 @@ namespace SPTMap
             catch (Exception e)
             {
                 Plugin.Log.LogError($"OnRaidEnd lootable container marker teardown exception: {e}");
-            }
-
-            try
-            {
-                HitDamagePopupRenderer.OnRaidEnd();
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.LogError($"OnRaidEnd hit damage popup teardown exception: {e}");
             }
 
             try
@@ -849,14 +916,23 @@ namespace SPTMap
 
                 QuestDebugPanel.Draw();
 
+                // OnGUI runs once per GUI event (Layout + Repaint every frame, plus one per mouse/
+                // key event). The debug panel above uses GUILayout and needs every event; everything
+                // below is plain GUI.* drawing with no interactive controls, so only the Repaint pass
+                // does anything visible - skipping the rest cuts the map/marker/ESP cost 2x or more.
+                if (Event.current.type != EventType.Repaint)
+                {
+                    return;
+                }
+
                 // outside a raid and not peeking, there's nothing worth showing permanently -
                 // just prove the plugin's alive. In raid, the minimap is always up (small, corner);
                 // holding M enlarges it to most of the screen for a full browse instead of
                 // replacing a hidden map, matching how the peek key is expected to behave.
                 if (!peeking && !inRaid)
                 {
-                    var labelOrigin = GetMinimapOrigin(MinimapWidth, 20);
-                    var labelRect = new Rect(labelOrigin.x, labelOrigin.y, MinimapWidth, 20);
+                    var labelOrigin = GetMinimapOrigin(MinimapSize, 20);
+                    var labelRect = new Rect(labelOrigin.x, labelOrigin.y, MinimapSize, 20);
                     var color = GUI.color;
                     GUI.color = new Color(1f, 1f, 1f, 0.5f);
                     GUI.Label(labelRect, $"SPTMap Loaded (built for {Plugin.BuiltForVersion})");
@@ -875,15 +951,6 @@ namespace SPTMap
                     catch (Exception e)
                     {
                         Plugin.Log.LogError($"EnemyEspRenderer.Draw exception: {e}");
-                    }
-
-                    try
-                    {
-                        HitDamagePopupRenderer.Draw();
-                    }
-                    catch (Exception e)
-                    {
-                        Plugin.Log.LogError($"HitDamagePopupRenderer.Draw exception: {e}");
                     }
 
                     try
@@ -937,12 +1004,10 @@ namespace SPTMap
                 }
                 else
                 {
-                    // height follows the current map's own aspect ratio so the mini-map never
-                    // shows letterboxed empty space or crops the map - only width is configurable.
+                    // follows the current map's own aspect ratio so the mini-map never shows
+                    // letterboxed empty space or crops the map - the configured size is the longer side.
                     var aspect = texture != null ? texture.height / (float)texture.width : 1f;
-                    var height = MinimapWidth * aspect;
-                    var origin = GetMinimapOrigin(MinimapWidth, height);
-                    rect = new Rect(origin.x, origin.y, MinimapWidth, height);
+                    rect = GetMinimapRect(aspect);
                 }
 
                 GUI.Box(rect, GUIContent.none);
@@ -964,9 +1029,8 @@ namespace SPTMap
                         : $" | floor: {level?.Level} (auto)";
                 }
 
-                // peeking (M held) always shows the full map, ignoring the configured zoom - which
-                // resumes as soon as M is released, since this doesn't touch _zoom itself.
-                var effectiveZoom = peeking ? MinZoom : _zoom;
+                // full map and mini-map each keep their own zoom level
+                var effectiveZoom = peeking ? _peekZoom : _zoom;
                 DrawMap(rect, def, texture, level, effectiveZoom);
 
                 var topBarRect = new Rect(rect.x, rect.y, rect.width, 18);

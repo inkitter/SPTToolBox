@@ -14,6 +14,11 @@ namespace SPTMap.Utils
         // commonly used elsewhere) - match case-insensitively.
         private static readonly Dictionary<string, MapDef> Defs = new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, Texture2D> Textures = new();
+
+        // Paths whose load already failed (missing file). Without this, a failed load caches null,
+        // the next lookup treats null as a miss, and File.Exists + an error log re-run on every
+        // OnGUI pass for every marker using that image.
+        private static readonly HashSet<string> FailedPaths = new();
         private static readonly HashSet<string> WarnedMissingNames = new(StringComparer.OrdinalIgnoreCase);
         private static bool _scanned;
 
@@ -62,9 +67,7 @@ namespace SPTMap.Utils
             if (Textures.TryGetValue(def.ImagePath, out var texture) && texture != null)
                 return texture;
 
-            texture = LoadTexture(def.ImagePath);
-            Textures[def.ImagePath] = texture;
-            return texture;
+            return LoadAndCache(def.ImagePath);
         }
 
         public static Texture2D GetLevelTexture(MapLevel level)
@@ -82,7 +85,21 @@ namespace SPTMap.Utils
             if (Textures.TryGetValue(relativePath, out var texture) && texture != null)
                 return texture;
 
-            texture = LoadTexture(relativePath);
+            return LoadAndCache(relativePath);
+        }
+
+        private static Texture2D LoadAndCache(string relativePath)
+        {
+            if (FailedPaths.Contains(relativePath))
+                return null;
+
+            var texture = LoadTexture(relativePath);
+            if (texture == null)
+            {
+                FailedPaths.Add(relativePath);
+                return null;
+            }
+
             Textures[relativePath] = texture;
             return texture;
         }

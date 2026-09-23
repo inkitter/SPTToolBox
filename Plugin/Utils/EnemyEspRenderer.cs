@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Comfort.Common;
 using EFT;
+using EFT.CameraControl;
 using SPTMap.Config;
 using UnityEngine;
 
@@ -25,6 +26,10 @@ namespace SPTMap.Utils
             fontSize = 11,
             alignment = TextAnchor.UpperCenter,
             wordWrap = false,
+            // the default label skin pads and clips to the rect - with these small fixed-size
+            // rects that cut glyphs off (half-visible text). Let text overflow its rect instead.
+            clipping = TextClipping.Overflow,
+            padding = new RectOffset(0, 0, 0, 0),
         };
 
         public static void Draw()
@@ -50,13 +55,41 @@ namespace SPTMap.Utils
                 return;
             }
 
+            var screenRect = new Rect(0f, 0f, Screen.width, Screen.height);
+
+            // Scoped in: the lens shows the optic camera's render texture, which the main camera
+            // projection doesn't match (different FOV/position). Draw boxes that land inside the
+            // lens with the optic camera instead, mapped into the lens's on-screen rect and
+            // clipped to it; the main-camera pass skips anything whose box centre is in the lens.
+            if (TryGetOptic(camera, screenRect, out var opticCamera, out var lensRect))
+            {
+                DrawPass(gameWorld, camera, screenRect, maxDistance, true, lensRect);
+
+                GUI.BeginGroup(lensRect);
+                try
+                {
+                    DrawPass(gameWorld, opticCamera, new Rect(0f, 0f, lensRect.width, lensRect.height), maxDistance, false, default);
+                }
+                finally
+                {
+                    GUI.EndGroup();
+                }
+
+                return;
+            }
+
+            DrawPass(gameWorld, camera, screenRect, maxDistance, false, default);
+        }
+
+        private static void DrawPass(GameWorld gameWorld, Camera camera, Rect target, float maxDistance, bool hasExclude, Rect exclude)
+        {
             var drawn = 0;
             var skippedNoBodyParts = 0;
             foreach (var player in gameWorld.AllAlivePlayersList)
             {
                 try
                 {
-                    if (DrawIfEligible(player, camera, maxDistance))
+                    if (DrawIfEligible(player, camera, target, maxDistance, hasExclude, exclude))
                     {
                         drawn++;
                     }
@@ -77,7 +110,73 @@ namespace SPTMap.Utils
             }
         }
 
-        // shared with HitDamagePopupRenderer, which needs the same "which camera is actually
+        // OpticCameraManager/CameraManager are plain Il2Cpp objects (?. is fine); OpticSight, its
+        // LensRenderer and the Camera are UnityEngine.Objects - explicit == null checks.
+        private static bool TryGetOptic(Camera mainCamera, Rect screenRect, out Camera opticCamera, out Rect lensRect)
+        {
+            opticCamera = null;
+            lensRect = default;
+
+            try
+            {
+                var manager = CameraManager.Instance?.OpticCameraManager;
+                if (manager == null || !manager.IsAnyOpticCameraRendering)
+                {
+                    return false;
+                }
+
+                var sight = manager.CurrentOpticSight;
+                if (sight == null)
+                {
+                    return false;
+                }
+
+                var lens = sight.LensRenderer;
+                var cam = manager.Camera;
+                if (lens == null || cam == null || !cam.enabled)
+                {
+                    return false;
+                }
+
+                // on-screen rect of the lens = bounding box of its world bounds' 8 corners
+                var bounds = lens.bounds;
+                var min = bounds.min;
+                var max = bounds.max;
+                var minX = float.MaxValue;
+                var maxX = float.MinValue;
+                var minY = float.MaxValue;
+                var maxY = float.MinValue;
+                for (var i = 0; i < 8; i++)
+                {
+                    var corner = new Vector3((i & 1) == 0 ? min.x : max.x, (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z);
+                    if (!TryProject(mainCamera, screenRect, corner, out var p))
+                    {
+                        return false;
+                    }
+
+                    if (p.x < minX) minX = p.x;
+                    if (p.x > maxX) maxX = p.x;
+                    if (p.y < minY) minY = p.y;
+                    if (p.y > maxY) maxY = p.y;
+                }
+
+                if (maxX - minX < 4f || maxY - minY < 4f)
+                {
+                    return false;
+                }
+
+                opticCamera = cam;
+                lensRect = new Rect(minX, minY, maxX - minX, maxY - minY);
+                return true;
+            }
+            catch (Exception e)
+            {
+                LogUnavailableOnce($"optic camera lookup threw: {e.Message}");
+                return false;
+            }
+        }
+
+        // shared with BulletHitPopupRenderer, which needs the same "which camera is actually
         // drawing the screen" resolution to project damage-number popups. Cached across both
         // callers - Camera.allCameras allocates a fresh array of every scene camera on every call,
         // and without caching this ran twice per frame (once from each renderer) for the whole
@@ -117,20 +216,25 @@ namespace SPTMap.Utils
             return best;
         }
 
-        // shared with HitDamagePopupRenderer - see the normalization comment on its call site
-        // below for why this isn't a plain GUIUtility.ScreenToGUIPoint call.
+        // shared with BulletHitPopupRenderer. Projects to the camera's viewport (0..1) and maps
+        // that onto the full screen - not a plain GUIUtility.ScreenToGUIPoint call, since the
+        // camera's pixel size doesn't always match Screen size.
         public static bool TryWorldToGui(Camera camera, Vector3 worldPos, out Vector2 guiPoint)
         {
-            var screen = camera.WorldToScreenPoint(worldPos);
-            if (screen.z <= 0f)
+            return TryProject(camera, new Rect(0f, 0f, Screen.width, Screen.height), worldPos, out guiPoint);
+        }
+
+        // same, mapped onto an arbitrary GUI rect (the scope lens for the optic camera pass)
+        private static bool TryProject(Camera camera, Rect target, Vector3 worldPos, out Vector2 guiPoint)
+        {
+            var viewport = camera.WorldToViewportPoint(worldPos);
+            if (viewport.z <= 0f)
             {
                 guiPoint = default;
                 return false;
             }
 
-            var normalizedX = screen.x / camera.pixelWidth;
-            var normalizedY = screen.y / camera.pixelHeight;
-            guiPoint = new Vector2(normalizedX * Screen.width, (1f - normalizedY) * Screen.height);
+            guiPoint = new Vector2(target.x + viewport.x * target.width, target.y + (1f - viewport.y) * target.height);
             return true;
         }
 
@@ -206,7 +310,7 @@ namespace SPTMap.Utils
             Plugin.Log.LogWarning($"EnemyEspRenderer: nothing drawn - {reason}");
         }
 
-        private static bool DrawIfEligible(Player player, Camera camera, float maxDistance)
+        private static bool DrawIfEligible(Player player, Camera camera, Rect target, float maxDistance, bool hasExclude, Rect exclude)
         {
             if (player == null || player.IsYourPlayer || player.IsHeadlessClient() || player.IsBTRShooter())
             {
@@ -282,7 +386,7 @@ namespace SPTMap.Utils
                 // behind the camera - the projected xy would be meaningless (mirrored) - bail the
                 // whole box rather than draw a garbage rect. See TryWorldToGui for why this isn't
                 // a plain GUIUtility.ScreenToGUIPoint call.
-                if (!TryWorldToGui(camera, corner, out var guiPoint))
+                if (!TryProject(camera, target, corner, out var guiPoint))
                 {
                     return false;
                 }
@@ -298,6 +402,12 @@ namespace SPTMap.Utils
                 : new Color(1f, 0.55f, 0f);
 
             var boxRect = new Rect(minX, minY, maxX - minX, maxY - minY);
+            if (hasExclude && exclude.Contains(boxRect.center))
+            {
+                // inside the scope lens - the optic camera pass draws this one
+                return false;
+            }
+
             DrawBoxOutline(boxRect, color);
 
             if (Settings.ShowAiInfo.Value)

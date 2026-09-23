@@ -8,23 +8,15 @@ using UnityEngine;
 
 namespace SPTMap.Utils
 {
-    // Alternative to HitDamagePopupRenderer: instead of polling every alive enemy's summed body
-    // HP every frame (which calls into HealthController.GetBodyPartHealth even for a player who
-    // may have died/been destroyed that same frame - the suspected cause of an intermittent
-    // AccessViolationException there), this subscribes directly to each tracked player's
-    // Player.OnDamageReceived event and only does any work exactly when a real hit lands.
+    // Floating hit-damage numbers. Subscribes to each tracked player's Player.OnDamageReceived
+    // event and only does work when a real hit lands - replaced an older renderer that polled
+    // every enemy's HealthController each frame (suspected cause of an intermittent
+    // AccessViolationException when reading a player destroyed that same frame).
     // OnDamageReceived's delegate signature is Action<float damage, EBodyPart, EDamageType,
-    // float armorDamage, MaterialType> - all plain value types (floats/enums), which
-    // Il2CppInterop's DelegateSupport.ConvertDelegate can build a native trampoline for without
-    // throwing. This is unlike the older ActiveHealthController.ApplyDamageEvent (see
-    // HitDamagePopupRenderer's header comment), whose DamageInfo struct parameter is not
-    // blittable and made every subscribe attempt throw - the repeated failing native interop
-    // call from that is suspected to have corrupted the Il2Cpp runtime state badly enough to
-    // cause an unrelated fatal crash elsewhere. OnDamageReceived carries no such risk.
-    //
-    // Off by default via Settings.ShowHitDamageNumbersV2 and fully independent of
-    // HitDamagePopupRenderer/Settings.ShowHitDamageNumbers - the two can be compared side by
-    // side, and disabling this one alone is enough to stop it from running at all.
+    // float armorDamage, MaterialType> - all plain value types, which Il2CppInterop's
+    // DelegateSupport.ConvertDelegate handles without throwing (unlike
+    // ActiveHealthController.ApplyDamageEvent, whose non-blittable DamageInfo parameter made every
+    // subscribe attempt throw). Gated by Settings.ShowHitDamageNumbers.
     public static class BulletHitPopupRenderer
     {
         private const float PopupLifetimeSeconds = 1.2f;
@@ -54,7 +46,7 @@ namespace SPTMap.Utils
         private static readonly Queue<HitEvent> _pendingHits = new();
 
         // keyed by ProfileId (stable string), not just held as a HashSet of Player refs - same
-        // reasoning as HitDamagePopupRenderer/UnitMarkerProvider for why a Player-keyed
+        // reasoning as UnitMarkerProvider for why a Player-keyed
         // collection is unreliable across different native list reads.
         private static readonly Dictionary<string, Player> _subscribed = new();
 
@@ -64,6 +56,8 @@ namespace SPTMap.Utils
             fontSize = FontSize,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter,
+            clipping = TextClipping.Overflow,
+            wordWrap = false,
         };
 
         // called every frame from SPTMapController.Update while in a raid.
@@ -188,7 +182,7 @@ namespace SPTMap.Utils
 
         public static void Draw()
         {
-            if (!Settings.ShowHitDamageNumbersV2.Value || _popups.Count == 0)
+            if (!Settings.ShowHitDamageNumbers.Value || _popups.Count == 0)
             {
                 return;
             }

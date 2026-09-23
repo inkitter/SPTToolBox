@@ -82,7 +82,11 @@ namespace SPTMap.DynamicMarkers
             var marker = new MapMarker
             {
                 Category = Category,
-                Text = door.Id,
+                // the door itself has no display name - the matching key's localized item name
+                // ("Dorm room 314 marked key") is what identifies it to a player
+                Text = LocalizationUtils.TryLocalize(keyId + " Name")
+                    ?? LocalizationUtils.TryLocalize(keyId + " ShortName")
+                    ?? door.Id,
                 GetPosition = () => pos,
                 GetWorldPosition = () => worldPos,
                 // checked live every frame - a door drawn red at raid start should flip green the

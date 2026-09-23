@@ -2,23 +2,16 @@ using BepInEx.Configuration;
 
 namespace SPTMap.Config
 {
-    public enum MiniMapAnchor
-    {
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight,
-    }
-
     internal static class Settings
     {
         private const string MiniMapTitle = "Mini-map";
         private const string MarkersTitle = "Markers";
         private const string EspTitle = "Enemy ESP";
 
-        public static ConfigEntry<int> MiniMapWidth;
+        public static ConfigEntry<int> MiniMapSize;
         public static ConfigEntry<float> ZoomSpeed;
-        public static ConfigEntry<MiniMapAnchor> Anchor;
+        public static ConfigEntry<bool> AnchorLeft;
+        public static ConfigEntry<bool> AnchorBottom;
         public static ConfigEntry<int> PaddingX;
         public static ConfigEntry<int> PaddingY;
 
@@ -37,17 +30,17 @@ namespace SPTMap.Config
         public static ConfigEntry<float> EspDistance;
         public static ConfigEntry<bool> ShowBodyPartHealth;
         public static ConfigEntry<bool> ShowHitDamageNumbers;
-        public static ConfigEntry<bool> ShowHitDamageNumbersV2;
         public static ConfigEntry<bool> ShowAiInfo;
 
         public static void Init(ConfigFile config)
         {
-            MiniMapWidth = config.Bind(
+            MiniMapSize = config.Bind(
                 MiniMapTitle,
-                "Mini-map width",
+                "Mini-map size",
                 220,
                 new ConfigDescription(
-                    "Width of the mini-map in pixels; height follows the current map's aspect ratio",
+                    "Length of the mini-map's longer side in pixels; the other side follows the current "
+                    + "map's aspect ratio (so wide and tall maps get the same maximum footprint)",
                     new AcceptableValueRange<int>(200, 800)));
 
             ZoomSpeed = config.Bind(
@@ -55,14 +48,22 @@ namespace SPTMap.Config
                 "Zoom speed",
                 2f,
                 new ConfigDescription(
-                    "Multiplicative zoom rate per second when holding keypad 8/5",
+                    "Multiplicative zoom rate per second when holding keypad 8/5 (applies to whichever map is showing)",
                     new AcceptableValueRange<float>(1.2f, 6f)));
 
-            Anchor = config.Bind(
+            AnchorLeft = config.Bind(
                 MiniMapTitle,
-                "Anchor corner",
-                MiniMapAnchor.TopRight,
-                "Which screen corner the mini-map is anchored to");
+                "Anchor to left edge",
+                false,
+                "Place the mini-map on the left edge of the game window instead of the right; "
+                + "horizontal padding is measured from that edge");
+
+            AnchorBottom = config.Bind(
+                MiniMapTitle,
+                "Anchor to bottom edge",
+                false,
+                "Place the mini-map on the bottom edge of the game window instead of the top; "
+                + "vertical padding is measured from that edge");
 
             PaddingX = config.Bind(
                 MiniMapTitle,
@@ -180,15 +181,8 @@ namespace SPTMap.Config
                 EspTitle,
                 "Show hit damage numbers",
                 true,
-                "Pops a floating number over an enemy's head whenever you damage them");
-
-            ShowHitDamageNumbersV2 = config.Bind(
-                EspTitle,
-                "Show hit damage numbers (event-based, experimental)",
-                false,
-                "Alternative to 'Show hit damage numbers' - spawns popups from Player.OnDamageReceived "
-                + "hit events instead of polling every enemy's HP every frame. Independent of the option "
-                + "above; enable to compare, disable if it misbehaves");
+                "Pops a floating number at the hit body part whenever you damage an enemy "
+                + "(driven by Player.OnDamageReceived hit events)");
 
             ShowAiInfo = config.Bind(
                 EspTitle,

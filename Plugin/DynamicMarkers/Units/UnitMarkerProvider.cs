@@ -243,7 +243,16 @@ namespace SPTMap.DynamicMarkers
             string category;
             string aliveImagePath;
             Color aliveColor;
-            string text = player.Profile?.Info?.Nickname;
+            string text;
+            try
+            {
+                text = LocalizationUtils.GetPlayerDisplayName(player, player.IsPMC(), player.IsTrackedBoss());
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"TryAddMarker: display name lookup threw, using nickname: {e.Message}");
+                text = player.Profile?.Info?.Nickname;
+            }
 
             // the BTR's turret gunner is an invincible bot Player - shown as the vehicle itself
             // rather than as an enemy, reusing this class's existing position/facing tracking
