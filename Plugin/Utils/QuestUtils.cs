@@ -83,7 +83,7 @@ namespace SPTMap.Utils
 
             foreach (var condition in GetIncompleteQuestConditions(player, quest))
             {
-                var questName = quest.Template.NameLocaleKey.BSGLocalized();
+                var questName = GetQuestDisplayName(quest);
 
                 foreach (var worldPosition in GetPositionsForCondition(condition))
                 {
@@ -119,6 +119,27 @@ namespace SPTMap.Utils
             }
         }
 
+        // Some quests have no localized name - fall back to the description, then the quest id,
+        // so the hover label is never blank. null, "" and whitespace-only all count as empty.
+        private static string GetQuestDisplayName(Quest quest)
+        {
+            string name = null;
+            try { name = quest.Template.NameLocaleKey.BSGLocalized(); } catch { }
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+
+            string description = null;
+            try { description = quest.Description; } catch { }
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                return description;
+            }
+
+            return quest.Id;
+        }
+
         // IL2CPP interop gotcha: elements pulled out of an Il2Cpp List<Condition> come back
         // wrapped as the declared element type (Condition), not the actual runtime subtype, so a
         // C# `switch`/`is` pattern match against ConditionZone/ConditionVisitPlace/etc. never
@@ -126,9 +147,14 @@ namespace SPTMap.Utils
         // UnitMarkerProvider for the same pattern.
         private static IEnumerable<Vector3> GetPositionsForCondition(Condition condition)
         {
+            // ConditionLeaveItemAtLocation and ConditionPlaceBeacon both derive from ConditionZone,
+            // so they land here too. Their `target` holds the *item* template ids to place, not
+            // zone ids - the zones live in `zoneIds`. Only fall back to `target` if zoneIds is empty.
             if (condition.TryCast<ConditionZone>() is { } zoneCondition)
             {
-                foreach (var zoneId in zoneCondition.target)
+                var zoneIds = zoneCondition.zoneIds;
+                var useZoneIds = zoneIds != null && zoneIds.Length > 0;
+                foreach (var zoneId in useZoneIds ? zoneIds : zoneCondition.target)
                 {
                     foreach (var position in GetPositionsForZoneId(zoneId))
                     {
@@ -153,26 +179,6 @@ namespace SPTMap.Utils
             else if (condition.TryCast<ConditionInZone>() is { } zone)
             {
                 foreach (var zoneId in zone.zoneIds)
-                {
-                    foreach (var position in GetPositionsForZoneId(zoneId))
-                    {
-                        yield return position;
-                    }
-                }
-            }
-            else if (condition.TryCast<ConditionLeaveItemAtLocation>() is { } leaveItemCondition)
-            {
-                foreach (var zoneId in leaveItemCondition.zoneIds)
-                {
-                    foreach (var position in GetPositionsForZoneId(zoneId))
-                    {
-                        yield return position;
-                    }
-                }
-            }
-            else if (condition.TryCast<ConditionPlaceBeacon>() is { } beaconCondition)
-            {
-                foreach (var zoneId in beaconCondition.zoneIds)
                 {
                     foreach (var position in GetPositionsForZoneId(zoneId))
                     {
