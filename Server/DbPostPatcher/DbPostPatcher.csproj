@@ -11,10 +11,10 @@
   <!--
     Deploys into, and is compiled against, the live SPT server install - same pattern as
     ../../Plugin's TarkovDir. Override SptRuntimeDir in DbPostPatcher.csproj.user
-    (gitignored) if yours lives somewhere other than D:\Game\SPT5\SPT_Runtime.
+    (gitignored) if yours lives somewhere other than D:\Game\SPT52\SPT_Runtime.
   -->
   <PropertyGroup>
-    <SptRuntimeDir Condition="'$(SptRuntimeDir)' == ''">D:\Game\SPT5\SPT_Runtime</SptRuntimeDir>
+    <SptRuntimeDir Condition="'$(SptRuntimeDir)' == ''">D:\Game\SPT52\SPT_Runtime</SptRuntimeDir>
     <ModDeployDir>$(SptRuntimeDir)\user\mods\DbPostPatcher</ModDeployDir>
   </PropertyGroup>
 

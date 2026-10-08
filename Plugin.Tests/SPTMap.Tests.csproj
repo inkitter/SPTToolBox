@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -22,7 +22,7 @@
     <!-- Only pure logic files are compiled here (linked, not project-referenced) so `dotnet test`
          doesn't pull in SPTMap.csproj's PostBuild step (which copies into a live game install and
          requires the game closed) or its full IL2CPP/BepInEx reference set. -->
-    <TarkovDir Condition=" '$(TarkovDir)' == '' ">D:\Game\SPT5\</TarkovDir>
+    <TarkovDir Condition=" '$(TarkovDir)' == '' ">D:\Game\SPT52\</TarkovDir>
     <TarkovInteropDir>$(TarkovDir)BepInEx\interop\</TarkovInteropDir>
   </PropertyGroup>
 

@@ -20,9 +20,11 @@ Two independent projects in one repo (SPTToolBox):
 
 ## Build & deploy
 
-- SPTMap: `dotnet build` from `Plugin\`. `TarkovDir` defaults to `D:\Game\SPT5\`; override in `Plugin\SPTMap.csproj.user` (gitignored) or `-p:TarkovDir=...`. **Close the game first** — PostBuild copy fails if `EscapeFromTarkov.exe` is running.
-- DbPostPatcher: `dotnet build` from `Server\DbPostPatcher\`. `SptRuntimeDir` defaults to `D:\Game\SPT5\SPT_Runtime`; override in `DbPostPatcher.csproj.user`. **Always run the server once after adding a new patch file.**
+- SPTMap: `dotnet build` from `Plugin\`. `TarkovDir` defaults to `D:\Game\SPT52\`; override in `Plugin\SPTMap.csproj.user` (gitignored) or `-p:TarkovDir=...`. **Close the game first** — PostBuild copy fails if `EscapeFromTarkov.exe` is running.
+- DbPostPatcher: `dotnet build` from `Server\DbPostPatcher\`. `SptRuntimeDir` defaults to `D:\Game\SPT52\SPT_Runtime`; override in `DbPostPatcher.csproj.user`. **Always run the server once after adding a new patch file.**
 
+- GameOriginalSource: `D:\SteamLibrary\steamapps\common\Escape from Tarkov\build`
+- 
 ## Release
 
 Via `gh` (full path: `C:\Program Files\GitHub CLI\gh.exe`) to `inkitter/SPTToolBox`. **Ask the user whether to bump the version before publishing.** Full steps: PROMPT.md → Release procedure.

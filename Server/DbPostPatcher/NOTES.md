@@ -90,7 +90,7 @@ Everything else matched its comment and got ported as-is:
 ## 7. Engine built, compiled, and smoke-tested against the live server
 
 Verified end-to-end (2026-09-15): `dotnet build` deploys the DLL + `patches/*.json` +
-`patches.enabled.json` into `D:\Game\SPT5\SPT_Runtime\user\mods\DbPostPatcher\`, and a
+`patches.enabled.json` into `D:\Game\SPT52\SPT_Runtime\user\mods\DbPostPatcher\`, and a
 real `SPT.Server.exe` run applies all 9 currently-enabled patch files with 0 failures. Two real
 bugs surfaced by actually running it against the live database (not just reading the schema):
 
@@ -111,7 +111,7 @@ The csproj references the server's already-built DLLs in `SptRuntimeDir` directl
 + `HintPath`, `Private=false`) rather than `ProjectReference`-ing `server-csharp`'s source
 projects - the latter was tried first and works, but drags the entire (large) server solution
 into every build here. Override `SptRuntimeDir`/`ModDeployDir` via
-`DbPostPatcher.csproj.user` (gitignored) if your install isn't at `D:\Game\SPT5\SPT_Runtime`.
+`DbPostPatcher.csproj.user` (gitignored) if your install isn't at `D:\Game\SPT52\SPT_Runtime`.
 
 Patch files and `patches.enabled.json` are deployed as loose files next to the DLL, not embedded
 resources - editing them post-build and restarting the server is enough, no rebuild needed.

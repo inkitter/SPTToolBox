@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>SPTMap</AssemblyName>
     <Description>Lightweight IMGUI-based in-game map for SPT</Description>
     <LangVersion>latest</LangVersion>
@@ -12,7 +12,7 @@
   <!-- TarkovDir: override per-machine in SPTMap.csproj.user (gitignored, MSBuild auto-imports it)
        or via -p:TarkovDir=... ; falls back to this default otherwise. -->
   <PropertyGroup>
-    <TarkovDir Condition=" '$(TarkovDir)' == '' ">D:\Game\SPT5\</TarkovDir>
+    <TarkovDir Condition=" '$(TarkovDir)' == '' ">D:\Game\SPT52\</TarkovDir>
     <TarkovInteropDir>$(TarkovDir)BepInEx\interop\</TarkovInteropDir>
     <TarkovBepInExCoreDir>$(TarkovDir)BepInEx\core\</TarkovBepInExCoreDir>
   </PropertyGroup>

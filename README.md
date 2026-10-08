@@ -80,7 +80,7 @@ that cost real time to track down.
 `dotnet build` from `Server/DbPostPatcher/` deploys the DLL and all patch files straight into
 `user/mods/DbPostPatcher/` in your SPT server install - see
 [`CLAUDE.md`](CLAUDE.md#dbpostpatcher-server-mod) or the csproj comments for the
-`SptRuntimeDir` override if your install isn't at `D:\Game\SPT5\SPT_Runtime`.
+`SptRuntimeDir` override if your install isn't at `D:\Game\SPT52\SPT_Runtime`.
 
 ## License
 

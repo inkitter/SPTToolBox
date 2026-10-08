@@ -1,12 +1,12 @@
 # Deploy
 
-Practical build/deploy commands for everything that ends up running against the local SPT install at `D:\Game\SPT5\`. This repo (SPTToolBox) hosts two of the three things below (SPTMap, DbPostPatcher); the SPT server itself lives in a separate repo (`d:\Git\SPT\server-csharp`) but is included here since it's the runtime all three actually run against.
+Practical build/deploy commands for everything that ends up running against the local SPT install at `D:\Game\SPT52\`. This repo (SPTToolBox) hosts two of the three things below (SPTMap, DbPostPatcher); the SPT server itself lives in a separate repo (`d:\Git\SPT\server-csharp`) but is included here since it's the runtime all three actually run against.
 
 Full architectural detail for SPTMap/DbPostPatcher lives in [CLAUDE.md](CLAUDE.md) — this file is just the "what command do I run" cheat sheet.
 
 ## 1. SPTMap (client plugin)
 
-Source: `Plugin\`. Deploys to `$(TarkovDir)BepInEx\plugins\sptmap\` (default `D:\Game\SPT5\BepInEx\plugins\sptmap\`).
+Source: `Plugin\`. Deploys to `$(TarkovDir)BepInEx\plugins\sptmap\` (default `D:\Game\SPT52\BepInEx\plugins\sptmap\`).
 
 ```powershell
 # Close the game first - the copy fails if EscapeFromTarkov.exe is running.
@@ -15,7 +15,7 @@ Source: `Plugin\`. Deploys to `$(TarkovDir)BepInEx\plugins\sptmap\` (default `D:
 dotnet build
 
 # Or override the target install for one build without a .csproj.user:
-dotnet build -p:TarkovDir="D:\Game\SPT5\"
+dotnet build -p:TarkovDir="D:\Game\SPT52\"
 ```
 
 PostBuild auto-copies `SPTMap.dll`, `Newtonsoft.Json.dll`, and `Resources\` to the target folder. Override `TarkovDir` per machine in `Plugin\SPTMap.csproj.user` (gitignored, MSBuild auto-imports it) instead of passing `-p:` every time:
@@ -23,14 +23,14 @@ PostBuild auto-copies `SPTMap.dll`, `Newtonsoft.Json.dll`, and `Resources\` to t
 ```xml
 <Project>
   <PropertyGroup>
-    <TarkovDir>D:\Game\SPT5\</TarkovDir>
+    <TarkovDir>D:\Game\SPT52\</TarkovDir>
   </PropertyGroup>
 </Project>
 ```
 
 ## 2. DbPostPatcher (server mod, this repo)
 
-Source: `Server\DbPostPatcher\`. Deploys to `$(SptRuntimeDir)\user\mods\DbPostPatcher\` (default `D:\Game\SPT5\SPT_Runtime\user\mods\DbPostPatcher\`).
+Source: `Server\DbPostPatcher\`. Deploys to `$(SptRuntimeDir)\user\mods\DbPostPatcher\` (default `D:\Game\SPT52\SPT_Runtime\user\mods\DbPostPatcher\`).
 
 ```powershell
 # From Server\DbPostPatcher\
@@ -43,7 +43,7 @@ After adding a new patch file, **run the server once** — `patches.enabled.json
 
 ## 3. SPT server (`d:\Git\SPT\server-csharp`, separate repo)
 
-Not part of this repo — included here because DbPostPatcher and SPTMap's F9 "Give Item" panel both run against it. Deploys to `D:\Game\SPT5\SPT_Runtime\` (a flat publish-output directory: server binaries + `SPT_Data` at the top level, plus `user\` holding profiles/mods/credentials — never touch `user\` from a server publish).
+Not part of this repo — included here because DbPostPatcher and SPTMap's F9 "Give Item" panel both run against it. Deploys to `D:\Game\SPT52\SPT_Runtime\` (a flat publish-output directory: server binaries + `SPT_Data` at the top level, plus `user\` holding profiles/mods/credentials — never touch `user\` from a server publish).
 
 **Requires `git-lfs`** (`items.json`, `looseLoot.json`, `background.mp4` are LFS-tracked per `.gitattributes`). If it's not installed, checkout silently leaves LFS pointer text (`version https://git-lfs.github.com/spec/v1...`) in place of the real file, and the server fails to boot with a JSON parse error like `'v' is an invalid start of a value` on `items.json`. Install once via `winget install --id GitHub.GitLFS -e`, then `git lfs install && git lfs pull` in the repo. A freshly-installed git-lfs may not be on PATH for an already-open terminal/IDE — restart it, or for this session: `export PATH="$PATH:/c/Program Files/Git LFS"`.
 
@@ -55,10 +55,10 @@ git checkout 5.0.0-BEM-20260914   # match whatever tag you're using in modules/
 dotnet publish SPTushonka.Server/SPTushonka.Server.csproj -c Release -o <scratch-dir>
 ```
 
-Then copy the publish output into `D:\Game\SPT5\SPT_Runtime\`, **excluding `user\`** so profiles/mods/credentials are never touched:
+Then copy the publish output into `D:\Game\SPT52\SPT_Runtime\`, **excluding `user\`** so profiles/mods/credentials are never touched:
 
 ```powershell
-Robocopy <scratch-dir> "D:\Game\SPT5\SPT_Runtime" /E /XD user /NFL /NDL /NJH /R:1 /W:1
+Robocopy <scratch-dir> "D:\Game\SPT52\SPT_Runtime" /E /XD user /NFL /NDL /NJH /R:1 /W:1
 ```
 
 Robocopy exit code `1` means "files copied successfully" (not an error) — treat `0` or `1` as success, anything `>=8` as a real failure. Publish to a scratch directory first and inspect it (rather than publishing straight at `SPT_Runtime`) so a `dotnet publish` that unexpectedly drops or renames files doesn't silently clobber the live install.
@@ -68,25 +68,25 @@ Don't `dotnet build` this repo expecting a runnable server — `SPTushonka.Serve
 **Switching to an older commit/tag after a newer one was deployed can leave stray data files behind and crash the server at boot.** Plain `Robocopy /E` only adds/overwrites — it never deletes a destination file that isn't in the source, so a database file introduced by a newer version (e.g. `SPT_Data\database\templates\leagueRanks.json`) survives a "downgrade" deploy untouched. Older server code doesn't know that file's property (`TemplateTable` has no matching field) and crashes on boot with `Unable to find property '<name>' for type 'TemplateTable'`. Fix: after switching commits/tags, mirror just the affected data directory instead of the whole runtime (full `/MIR` on `SPT_Runtime` risks deleting root-level files — launcher exe, native argon2 libs — that aren't part of this publish output at all and may be needed by something else):
 
 ```powershell
-Robocopy <scratch-dir>\SPT_Data\database\templates "D:\Game\SPT5\SPT_Runtime\SPT_Data\database\templates" /MIR /NFL /NDL /NJH /R:1 /W:1
+Robocopy <scratch-dir>\SPT_Data\database\templates "D:\Game\SPT52\SPT_Runtime\SPT_Data\database\templates" /MIR /NFL /NDL /NJH /R:1 /W:1
 ```
 
 Preview first with `/L` (list-only, no changes) if unsure what a `/MIR` would delete.
 
 ## 4. modules (`d:\Git\SPT\modules`, separate repo — client-side BepInEx patch)
 
-The actual compatibility layer that makes the EFT client talk to an SPT server (distinct from SPTMap's own plugin). Deploys to `D:\Game\SPT5\BepInEx\` (`plugins/sptushonka/` + `patchers/`). Must be built from the **same tag** as server-csharp (see above) — they ship matched releases.
+The actual compatibility layer that makes the EFT client talk to an SPT server (distinct from SPTMap's own plugin). Deploys to `D:\Game\SPT52\BepInEx\` (`plugins/sptushonka/` + `patchers/`). Must be built from the **same tag** as server-csharp (see above) — they ship matched releases.
 
 ```powershell
 # From d:\Git\SPT\modules
 git checkout 5.0.0-BEM-20260914   # same tag as server-csharp
-dotnet build Modules.slnx -c Release -p:GameDir="D:\Game\SPT5"
+dotnet build Modules.slnx -c Release -p:GameDir="D:\Game\SPT52"
 ```
 
 `SPTushonka.Build`'s post-build target assembles everything into `Build\BepInEx\` (wiping that folder first so removed plugins don't linger), which you then copy over the install:
 
 ```powershell
-Robocopy "Build\BepInEx" "D:\Game\SPT5\BepInEx" /E /NFL /NDL /NJH /R:1 /W:1
+Robocopy "Build\BepInEx" "D:\Game\SPT52\BepInEx" /E /NFL /NDL /NJH /R:1 /W:1
 ```
 
-Default `GameDir` in `Directory.Build.props` is `D:/SPT-5.0.0/DEV`, not this machine's install — always pass `-p:GameDir="D:\Game\SPT5"` (or set it in a local override, same pattern as the other two projects). Close the game before building/deploying, same reasoning as SPTMap.
+Default `GameDir` in `Directory.Build.props` is `D:/SPT-5.0.0/DEV`, not this machine's install — always pass `-p:GameDir="D:\Game\SPT52"` (or set it in a local override, same pattern as the other two projects). Close the game before building/deploying, same reasoning as SPTMap.
