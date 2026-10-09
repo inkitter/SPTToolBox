@@ -84,12 +84,12 @@ namespace SPTMap.DynamicMarkers
         // interval, so this ran up to ~6-7 times/sec) just to safely snapshot _entries.Keys before
         // RemoveEntry mutates the dictionary mid-iteration.
         private readonly List<string> _trackedKeysScratch = new();
-        private readonly Il2CppSystem.Action<IPlayer> _onPersonAdd;
+        private readonly Action<IPlayer> _onPersonAdd;
         private float _pollAccumulator;
 
         public UnitMarkerProvider()
         {
-            _onPersonAdd = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<IPlayer>>(new Action<IPlayer>(TryAddMarker));
+            _onPersonAdd = TryAddMarker;
         }
 
         public void OnRaidStart()

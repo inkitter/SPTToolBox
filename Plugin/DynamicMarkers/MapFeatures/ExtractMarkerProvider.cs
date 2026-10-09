@@ -42,7 +42,7 @@ namespace SPTMap.DynamicMarkers
         // rescan every frame forever - the same bug that tanked FPS before), so bound it in time.
         private const float MaxRetrySeconds = 5f;
         private float _firstAttemptTime = -1f;
-        private readonly Il2CppSystem.Action<ExfiltrationPoint, EExfiltrationStatus> _onStatusChanged;
+        private readonly Action<ExfiltrationPoint, EExfiltrationStatus> _onStatusChanged;
 
         // Lighthouse train extract: icon colour follows the train's own travel state instead of
         // the extract status - red not yet coming, yellow on its way, green boardable (arrived),
@@ -65,8 +65,7 @@ namespace SPTMap.DynamicMarkers
 
         public ExtractMarkerProvider()
         {
-            _onStatusChanged = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<ExfiltrationPoint, EExfiltrationStatus>>(
-                new Action<ExfiltrationPoint, EExfiltrationStatus>(UpdateStatus));
+            _onStatusChanged = UpdateStatus;
         }
 
         public void OnRaidStart()
