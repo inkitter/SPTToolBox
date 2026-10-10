@@ -176,6 +176,14 @@ namespace SPTMap.Utils
             GUILayout.EndArea();
         }
 
+        private static string _questSearch = "";
+
+        private static bool ContainsIgnoreCase(string haystack, string needle)
+        {
+            return !string.IsNullOrEmpty(haystack)
+                && haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static void DrawQuestPage()
         {
             var questController = ItemUiContext.Instance?.QuestController;
@@ -209,6 +217,14 @@ namespace SPTMap.Utils
                         _ => quest.QuestStatus is EQuestStatus.Started or EQuestStatus.AvailableForFinish,
                     };
                     if (!matchesTab)
+                    {
+                        continue;
+                    }
+
+                    if (_questSearch.Length > 0
+                        && !ContainsIgnoreCase(quest.Name, _questSearch)
+                        && !ContainsIgnoreCase(quest.Id, _questSearch)
+                        && !ContainsIgnoreCase(quest.Description, _questSearch))
                     {
                         continue;
                     }
@@ -290,6 +306,15 @@ namespace SPTMap.Utils
                     _tab = i;
                 }
                 GUI.color = prevColor;
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Search", GUILayout.Width(50f));
+            _questSearch = GUILayout.TextField(_questSearch ?? "");
+            if (GUILayout.Button("X", GUILayout.Width(30f)))
+            {
+                _questSearch = "";
             }
             GUILayout.EndHorizontal();
 

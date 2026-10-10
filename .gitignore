@@ -5,3 +5,4 @@ release/
 local_config.py
 *.zip
 Server/DbPostPatcher/patches.enabled.json
+SPT更新流程.md
